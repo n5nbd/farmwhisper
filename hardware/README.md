@@ -23,22 +23,28 @@ This directory is reserved for FarmWhisper hardware planning and future design n
 
 FarmWhisper should use an 8-pin peripheral connector as the preferred base connector for product nodes unless a product has a clear need for more signals.
 
-Candidate physical order:
+Selected physical order on Header J3, bottom-up:
 
 1. GND
 2. 3V3
 3. 3V3 / aux 3V3
-4. GPIO TBD, likely big button input
-5. SDA GPIO45, product I2C bus
-6. SCL GPIO46, product I2C bus
-7. GPIO TBD, likely NeoPixel data
-8. GPIO TBD, spare / interrupt / enable / future use
+4. GPIO37 spare / TBD
+5. GPIO46 product I2C SCL
+6. GPIO45 product I2C SDA
+7. GPIO42 big button candidate
+8. GPIO41 NeoPixel data candidate
+
+Nearby optional expansion pins for future larger connectors:
+
+9. GPIO40 optional expansion / GNSS wake-control-labeled pin
+10. GPIO39 optional expansion / GNSS TX-labeled pin
+11. GPIO38 optional expansion / GNSS RX-labeled pin
 
 This connector is intended to cover common FarmWhisper node needs: I2C sensor bus, power, ground, one status output, one user/service input, and one spare signal.
 
-Ten-pin or additional connectors may be used for special nodes, but the 8-pin connector is the preferred base connector unless a product has a clear need for more signals.
+Ten-pin or larger connectors are allowed only for special node designs with a clear need. The base connector remains 8 pins unless a product has a clear need for more signals.
 
-Display I2C remains separate and reserved for display only. Final TBD GPIO selection requires physical board and header verification and should avoid bootstrapping, USB, flash/PSRAM, LoRa, display, and other reserved or special pins.
+Display I2C remains separate and reserved for display only. GPIO45/GPIO46 have ESP32-S3 boot/strapping sensitivity, so external circuitry must not strongly drive or load them during boot. GPIO41/GPIO42 may be labeled for GNSS PPS/reset/control on Heltec pinmaps, so they must not be used for FarmWhisper product I/O on any board build where GNSS is populated and expected to function. FarmWhisper base nodes will not use GNSS/GPS by default, so GNSS-associated pins may be claimed for product I/O when GNSS is not populated or used.
 
 ## Future hardware notes
 
