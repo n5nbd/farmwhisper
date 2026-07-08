@@ -3,144 +3,206 @@
 #include <Adafruit_NeoPixel.h>
 #include <VL53L1X.h>
 
-static constexpr int PIN_I2C_SDA = 45;
-static constexpr int PIN_I2C_SCL = 46;
+// FarmWhisper Heltec WiFi LoRa 32 V4 R2/R8 base connector contract.
+// Header J3 bottom-up:
+// 1 GND
+// 2 3V3
+// 3 3V3 / aux 3V3
+// 4 GPIO37 spare/questionable GPIO
+// 5 GPIO46 product I2C SCL
+// 6 GPIO45 product I2C SDA
+// 7 GPIO42 big button, active LOW
+// 8 GPIO41 NeoPixel data
 
-static constexpr int PIN_BUTTON = 42;  // active LOW
-static constexpr int PIN_PIXEL  = 41;
+static constexpr uint8_t PIN_PRODUCT_I2C_SDA = 45;
+static constexpr uint8_t PIN_PRODUCT_I2C_SCL = 46;
+static constexpr uint8_t PIN_BUTTON = 42;
+static constexpr uint8_t FW_PIN_NEOPIXEL = 41;
 
-static constexpr uint8_t PIXEL_COUNT = 1;
-static constexpr uint8_t VL53L1X_ADDR = 0x29;
+static constexpr uint32_t SERIAL_BAUD = 115200;
 
-static constexpr unsigned long BUTTON_DEBOUNCE_MS = 75;
+static constexpr uint32_t BUTTON_DEBOUNCE_MS = 35;
+static constexpr uint32_t HEARTBEAT_MS = 1000;
+static constexpr uint32_t TOF_POLL_MS = 100;
 
-static constexpr uint8_t TOF_STABILITY_WINDOW = 5;
-static constexpr uint16_t TOF_STABILITY_MAX_SPAN_MM = 25;
+static constexpr uint8_t STABILITY_WINDOW_SIZE = 5;
+static constexpr uint16_t STABILITY_MAX_SPAN_MM = 25;
 
-Adafruit_NeoPixel pixel(PIXEL_COUNT, PIN_PIXEL, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixel(1, FW_PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
 
-unsigned long lastPixelMs = 0;
-unsigned long lastHeartbeatMs = 0;
-unsigned long lastTofReportMs = 0;
+enum class ComponentStatus {
+  Booting,
+  TofInitFailed,
+  TofTimeout,
+  TofShady,
+  TofWarming,
+  TofUnstable,
+  TofStable
+};
 
-uint8_t colorStep = 0;
-bool lastRawButtonState = HIGH;
-bool tofReady = false;
+static ComponentStatus componentStatus = ComponentStatus::Booting;
 
-// Application-facing button state
-uint32_t buttonPressCount = 0;
-unsigned long lastAcceptedButtonPressMs = 0;
+volatile uint32_t rawButtonIrqCount = 0;
 
-// ISR-owned button state
-volatile uint32_t buttonRawIrqCount = 0;
-volatile bool buttonIrqFlag = false;
+static bool lastRawButton = HIGH;
+static bool debouncedButton = HIGH;
+static uint32_t rawButtonChangedAtMs = 0;
+static uint32_t pressCount = 0;
+static uint32_t buttonFlashUntilMs = 0;
 
-// Application-facing ToF state
-bool hasLastValidTof = false;
-uint16_t lastValidTofMm = 0;
-uint32_t tofValidCount = 0;
-uint32_t tofShadyCount = 0;
-uint32_t tofTimeoutCount = 0;
+static bool tofReady = false;
+static uint32_t tofValidCount = 0;
+static uint32_t tofShadyCount = 0;
+static uint32_t tofTimeoutCount = 0;
+static uint16_t lastValidTofMm = 0;
+static bool hasLastValidTof = false;
 
-// ToF stability window, using valid samples only
-uint16_t tofStableWindow[TOF_STABILITY_WINDOW] = {};
-uint8_t tofStableWindowCount = 0;
-uint8_t tofStableWindowNext = 0;
-bool tofStable = false;
-uint16_t tofStableMm = 0;
-uint16_t tofStableSpanMm = 0;
+static uint16_t stabilityWindow[STABILITY_WINDOW_SIZE] = {};
+static uint8_t stabilityCount = 0;
+static uint8_t stabilityWriteIndex = 0;
 
-void IRAM_ATTR onButtonInterrupt() {
-  buttonRawIrqCount++;
-  buttonIrqFlag = true;
+static uint32_t lastHeartbeatMs = 0;
+static uint32_t lastTofPollMs = 0;
+
+void IRAM_ATTR onButtonFalling() {
+  rawButtonIrqCount++;
 }
 
-void setPixelStep(uint8_t step) {
-  switch (step % 6) {
-    case 0:
-      pixel.setPixelColor(0, pixel.Color(24, 0, 0));    // red
-      break;
-    case 1:
-      pixel.setPixelColor(0, pixel.Color(0, 24, 0));    // green
-      break;
-    case 2:
-      pixel.setPixelColor(0, pixel.Color(0, 0, 24));    // blue
-      break;
-    case 3:
-      pixel.setPixelColor(0, pixel.Color(24, 12, 0));   // amber
-      break;
-    case 4:
-      pixel.setPixelColor(0, pixel.Color(0, 24, 24));   // cyan
-      break;
-    default:
-      pixel.setPixelColor(0, pixel.Color(24, 0, 24));   // magenta
-      break;
-  }
+const char *buttonText(bool value) {
+  return value == LOW ? "LOW/pressed" : "HIGH/released";
+}
 
+const char *statusText(ComponentStatus status) {
+  switch (status) {
+    case ComponentStatus::Booting:
+      return "BOOTING";
+    case ComponentStatus::TofInitFailed:
+      return "TOF_INIT_FAILED";
+    case ComponentStatus::TofTimeout:
+      return "TOF_TIMEOUT";
+    case ComponentStatus::TofShady:
+      return "TOF_SHADY";
+    case ComponentStatus::TofWarming:
+      return "TOF_WARMING";
+    case ComponentStatus::TofUnstable:
+      return "TOF_UNSTABLE";
+    case ComponentStatus::TofStable:
+      return "TOF_STABLE";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+void setPixel(uint8_t r, uint8_t g, uint8_t b) {
+  pixel.setPixelColor(0, pixel.Color(r, g, b));
   pixel.show();
 }
 
-bool i2cProbe(uint8_t addr) {
-  Wire.beginTransmission(addr);
-  return Wire.endTransmission() == 0;
-}
+void updateNeoPixel() {
+  const uint32_t now = millis();
 
-const char* formatLastValidTof() {
-  static char buffer[20];
-
-  if (hasLastValidTof) {
-    snprintf(buffer, sizeof(buffer), "%u mm", lastValidTofMm);
-  } else {
-    snprintf(buffer, sizeof(buffer), "none");
-  }
-
-  return buffer;
-}
-
-const char* tofStableStateText() {
-  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
-    return "warming";
-  }
-
-  return tofStable ? "yes" : "no";
-}
-
-const char* formatStableTof() {
-  static char buffer[24];
-
-  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
-    snprintf(buffer, sizeof(buffer), "warming");
-  } else if (tofStable) {
-    snprintf(buffer, sizeof(buffer), "%u mm", tofStableMm);
-  } else {
-    snprintf(buffer, sizeof(buffer), "~%u mm", tofStableMm);
-  }
-
-  return buffer;
-}
-
-void updateTofStability(uint16_t distanceMm) {
-  tofStableWindow[tofStableWindowNext] = distanceMm;
-  tofStableWindowNext = (tofStableWindowNext + 1) % TOF_STABILITY_WINDOW;
-
-  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
-    tofStableWindowCount++;
-  }
-
-  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
-    tofStable = false;
-    tofStableMm = distanceMm;
-    tofStableSpanMm = 0;
+  // Button press is a short white overlay on top of component status.
+  if (now < buttonFlashUntilMs) {
+    setPixel(40, 40, 40);
     return;
   }
 
-  uint16_t minMm = UINT16_MAX;
-  uint16_t maxMm = 0;
-  uint32_t sumMm = 0;
+  const bool blinkFast = ((now / 125) % 2) == 0;
+  const bool blinkSlow = ((now / 500) % 2) == 0;
 
-  for (uint8_t i = 0; i < TOF_STABILITY_WINDOW; i++) {
-    uint16_t value = tofStableWindow[i];
+  switch (componentStatus) {
+    case ComponentStatus::Booting:
+      setPixel(0, 0, 30);
+      break;
+
+    case ComponentStatus::TofInitFailed:
+      setPixel(blinkFast ? 45 : 0, 0, 0);
+      break;
+
+    case ComponentStatus::TofTimeout:
+      setPixel(blinkSlow ? 45 : 0, 0, 0);
+      break;
+
+    case ComponentStatus::TofShady:
+      setPixel(blinkFast ? 35 : 0, 0, blinkFast ? 35 : 0);
+      break;
+
+    case ComponentStatus::TofWarming:
+      setPixel(0, 0, blinkSlow ? 35 : 8);
+      break;
+
+    case ComponentStatus::TofUnstable:
+      setPixel(blinkSlow ? 35 : 6, blinkSlow ? 20 : 3, 0);
+      break;
+
+    case ComponentStatus::TofStable:
+      setPixel(0, 35, 0);
+      break;
+  }
+}
+
+bool scanProductI2cFor(uint8_t expectedAddr) {
+  Serial.println();
+  Serial.println("[i2c] Scanning product I2C bus GPIO45 SDA / GPIO46 SCL");
+
+  bool foundExpected = false;
+  uint8_t foundCount = 0;
+
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    const uint8_t error = Wire.endTransmission();
+
+    if (error == 0) {
+      foundCount++;
+      Serial.print("[i2c] Found device at 0x");
+      if (addr < 16) {
+        Serial.print('0');
+      }
+      Serial.println(addr, HEX);
+
+      if (addr == expectedAddr) {
+        foundExpected = true;
+      }
+    }
+  }
+
+  Serial.print("[i2c] Scan complete, devices=");
+  Serial.print(foundCount);
+  Serial.print(", expected 0x");
+  if (expectedAddr < 16) {
+    Serial.print('0');
+  }
+  Serial.print(expectedAddr, HEX);
+  Serial.print(" present=");
+  Serial.println(foundExpected ? "yes" : "no");
+
+  return foundExpected;
+}
+
+void addValidStabilitySample(uint16_t mm) {
+  stabilityWindow[stabilityWriteIndex] = mm;
+  stabilityWriteIndex = (stabilityWriteIndex + 1) % STABILITY_WINDOW_SIZE;
+
+  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+    stabilityCount++;
+  }
+}
+
+bool computeStability(uint16_t &avgMm, uint16_t &spanMm) {
+  if (stabilityCount == 0) {
+    avgMm = 0;
+    spanMm = 0;
+    return false;
+  }
+
+  uint32_t sum = 0;
+  uint16_t minMm = stabilityWindow[0];
+  uint16_t maxMm = stabilityWindow[0];
+
+  for (uint8_t i = 0; i < stabilityCount; i++) {
+    const uint16_t value = stabilityWindow[i];
+    sum += value;
 
     if (value < minMm) {
       minMm = value;
@@ -149,250 +211,254 @@ void updateTofStability(uint16_t distanceMm) {
     if (value > maxMm) {
       maxMm = value;
     }
-
-    sumMm += value;
   }
 
-  tofStableSpanMm = maxMm - minMm;
-  tofStableMm = static_cast<uint16_t>((sumMm + (TOF_STABILITY_WINDOW / 2)) /
-                                      TOF_STABILITY_WINDOW);
-  tofStable = tofStableSpanMm <= TOF_STABILITY_MAX_SPAN_MM;
+  avgMm = static_cast<uint16_t>(sum / stabilityCount);
+  spanMm = maxMm - minMm;
+
+  return stabilityCount == STABILITY_WINDOW_SIZE && spanMm <= STABILITY_MAX_SPAN_MM;
 }
 
-void scanI2cBusOnce() {
-  Serial.println();
-  Serial.println("Startup I2C scan on product bus SDA=GPIO45 SCL=GPIO46");
+void printStabilitySummary() {
+  uint16_t avgMm = 0;
+  uint16_t spanMm = 0;
+  const bool stable = computeStability(avgMm, spanMm);
 
-  uint8_t found = 0;
+  Serial.print(" stable=");
+  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+    Serial.print("warming");
+  } else {
+    Serial.print(stable ? "yes" : "no");
+  }
 
-  for (uint8_t addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    uint8_t err = Wire.endTransmission();
+  Serial.print(" stableAvgMm=");
+  Serial.print(avgMm);
+  Serial.print(" stableSpanMm=");
+  Serial.print(spanMm);
+}
 
-    if (err == 0) {
-      Serial.printf("  found 0x%02X", addr);
+void updateButton() {
+  const uint32_t now = millis();
+  const bool rawButton = digitalRead(PIN_BUTTON);
 
-      if (addr == VL53L1X_ADDR) {
-        Serial.print("  <- VL53L1X default address");
-      }
+  if (rawButton != lastRawButton) {
+    lastRawButton = rawButton;
+    rawButtonChangedAtMs = now;
 
-      Serial.println();
-      found++;
+    Serial.print("[button] raw=");
+    Serial.print(buttonText(rawButton));
+    Serial.print(" rawIrqCount=");
+    Serial.println(rawButtonIrqCount);
+  }
+
+  if ((now - rawButtonChangedAtMs) >= BUTTON_DEBOUNCE_MS && rawButton != debouncedButton) {
+    debouncedButton = rawButton;
+
+    Serial.print("[button] debounced=");
+    Serial.print(buttonText(debouncedButton));
+
+    if (debouncedButton == LOW) {
+      pressCount++;
+      buttonFlashUntilMs = now + 150;
+
+      Serial.print(" pressCount=");
+      Serial.print(pressCount);
     }
-  }
 
-  if (found == 0) {
-    Serial.println("  no I2C devices found");
+    Serial.print(" rawIrqCount=");
+    Serial.println(rawButtonIrqCount);
   }
-
-  Serial.printf("VL53L1X presence: %s\n",
-                i2cProbe(VL53L1X_ADDR) ? "PASS" : "FAIL / not seen at 0x29");
 }
 
-void setupTof() {
-  Serial.println();
-  Serial.println("VL53L1X setup");
-
-  if (!i2cProbe(VL53L1X_ADDR)) {
-    Serial.println("VL53L1X init skipped: not seen at 0x29");
-    tofReady = false;
-    return;
-  }
-
-  tof.setBus(&Wire);
-  tof.setTimeout(250);
-
-  if (!tof.init()) {
-    Serial.println("VL53L1X init: FAIL");
-    tofReady = false;
-    return;
-  }
-
-  if (!tof.setDistanceMode(VL53L1X::Long)) {
-    Serial.println("VL53L1X distance mode: FAIL");
-    tofReady = false;
-    return;
-  }
-
-  if (!tof.setMeasurementTimingBudget(50000)) {
-    Serial.println("VL53L1X timing budget: FAIL");
-    tofReady = false;
-    return;
-  }
-
-  tof.startContinuous(100);
-  tofReady = true;
-
-  Serial.println("VL53L1X init: PASS");
-  Serial.println("VL53L1X mode: Long");
-  Serial.println("VL53L1X timing budget: 50000 us");
-  Serial.println("VL53L1X continuous period: 100 ms");
-  Serial.println("VL53L1X app path: only range-valid samples update lastValidTofMm");
-  Serial.printf("VL53L1X stability: %u valid samples within %u mm span\n",
-                TOF_STABILITY_WINDOW,
-                TOF_STABILITY_MAX_SPAN_MM);
-}
-
-void reportTofIfReady() {
+void pollTof() {
   if (!tofReady) {
+    componentStatus = ComponentStatus::TofInitFailed;
     return;
   }
 
-  if (!tof.dataReady()) {
+  const uint32_t now = millis();
+  if ((now - lastTofPollMs) < TOF_POLL_MS) {
     return;
   }
+  lastTofPollMs = now;
 
-  uint16_t distanceMm = tof.read(false);
+  const uint16_t distanceMm = tof.read();
 
   if (tof.timeoutOccurred()) {
     tofTimeoutCount++;
+    componentStatus = ComponentStatus::TofTimeout;
 
-    Serial.printf("tof ~=timeout status=timeout lastValid=%s stable=%s timeoutCount=%lu\n",
-                  formatLastValidTof(),
-                  formatStableTof(),
-                  static_cast<unsigned long>(tofTimeoutCount));
+    Serial.print("[tof] timeout timeoutCount=");
+    Serial.print(tofTimeoutCount);
+    Serial.print(" lastValidMm=");
+    if (hasLastValidTof) {
+      Serial.print(lastValidTofMm);
+    } else {
+      Serial.print("none");
+    }
+    printStabilitySummary();
+    Serial.println();
     return;
   }
 
-  const char* statusText =
-      VL53L1X::rangeStatusToString(tof.ranging_data.range_status);
+  const VL53L1X::RangeStatus rangeStatus = tof.ranging_data.range_status;
+  const char *rangeStatusName = VL53L1X::rangeStatusToString(rangeStatus);
 
-  bool rangeValid = tof.ranging_data.range_status == 0;
-
-  if (rangeValid) {
-    hasLastValidTof = true;
-    lastValidTofMm = distanceMm;
-    tofValidCount++;
-
-    updateTofStability(distanceMm);
-
-    Serial.printf("tof distance=%u mm status=%s validCount=%lu stable=%s stableMm=%s span=%u\n",
-                  distanceMm,
-                  statusText,
-                  static_cast<unsigned long>(tofValidCount),
-                  tofStableStateText(),
-                  formatStableTof(),
-                  tofStableSpanMm);
-  } else {
+  if (rangeStatus != VL53L1X::RangeValid) {
     tofShadyCount++;
+    componentStatus = ComponentStatus::TofShady;
 
-    Serial.printf("tof ~=%u mm status=%s lastValid=%s stable=%s shadyCount=%lu\n",
-                  distanceMm,
-                  statusText,
-                  formatLastValidTof(),
-                  formatStableTof(),
-                  static_cast<unsigned long>(tofShadyCount));
+    Serial.print("[tof] ~");
+    Serial.print(distanceMm);
+    Serial.print(" mm status=");
+    Serial.print(rangeStatusName);
+    Serial.print(" shadyCount=");
+    Serial.print(tofShadyCount);
+    Serial.print(" lastValidMm=");
+    if (hasLastValidTof) {
+      Serial.print(lastValidTofMm);
+    } else {
+      Serial.print("none");
+    }
+    printStabilitySummary();
+    Serial.println();
+    return;
   }
+
+  tofValidCount++;
+  lastValidTofMm = distanceMm;
+  hasLastValidTof = true;
+  addValidStabilitySample(distanceMm);
+
+  uint16_t avgMm = 0;
+  uint16_t spanMm = 0;
+  const bool stable = computeStability(avgMm, spanMm);
+
+  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+    componentStatus = ComponentStatus::TofWarming;
+  } else if (stable) {
+    componentStatus = ComponentStatus::TofStable;
+  } else {
+    componentStatus = ComponentStatus::TofUnstable;
+  }
+
+  Serial.print("[tof] ");
+  Serial.print(distanceMm);
+  Serial.print(" mm status=");
+  Serial.print(rangeStatusName);
+  Serial.print(" validCount=");
+  Serial.print(tofValidCount);
+  Serial.print(" lastValidMm=");
+  Serial.print(lastValidTofMm);
+  printStabilitySummary();
+  Serial.println();
 }
 
-uint32_t getRawButtonIrqCount() {
-  noInterrupts();
-  uint32_t snapshot = buttonRawIrqCount;
-  interrupts();
-
-  return snapshot;
-}
-
-void handleButtonIrqEvent() {
-  if (!buttonIrqFlag) {
+void printHeartbeat() {
+  const uint32_t now = millis();
+  if ((now - lastHeartbeatMs) < HEARTBEAT_MS) {
     return;
   }
+  lastHeartbeatMs = now;
 
-  noInterrupts();
-  uint32_t rawIrqSnapshot = buttonRawIrqCount;
-  buttonIrqFlag = false;
-  interrupts();
+  uint16_t avgMm = 0;
+  uint16_t spanMm = 0;
+  const bool stable = computeStability(avgMm, spanMm);
 
-  const unsigned long now = millis();
-  const bool rawButtonState = digitalRead(PIN_BUTTON);
-
-  if (rawButtonState != LOW) {
-    return;
+  Serial.print("[heartbeat] ms=");
+  Serial.print(now);
+  Serial.print(" status=");
+  Serial.print(statusText(componentStatus));
+  Serial.print(" rawButton=");
+  Serial.print(buttonText(digitalRead(PIN_BUTTON)));
+  Serial.print(" rawIrqCount=");
+  Serial.print(rawButtonIrqCount);
+  Serial.print(" pressCount=");
+  Serial.print(pressCount);
+  Serial.print(" tofValid=");
+  Serial.print(tofValidCount);
+  Serial.print(" tofShady=");
+  Serial.print(tofShadyCount);
+  Serial.print(" tofTimeout=");
+  Serial.print(tofTimeoutCount);
+  Serial.print(" lastValidMm=");
+  if (hasLastValidTof) {
+    Serial.print(lastValidTofMm);
+  } else {
+    Serial.print("none");
   }
-
-  if (now - lastAcceptedButtonPressMs < BUTTON_DEBOUNCE_MS) {
-    return;
+  Serial.print(" stable=");
+  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+    Serial.print("warming");
+  } else {
+    Serial.print(stable ? "yes" : "no");
   }
-
-  lastAcceptedButtonPressMs = now;
-  buttonPressCount++;
-
-  Serial.printf("button event=PRESSED pressCount=%lu rawIrq=%lu\n",
-                static_cast<unsigned long>(buttonPressCount),
-                static_cast<unsigned long>(rawIrqSnapshot));
+  Serial.print(" stableAvgMm=");
+  Serial.print(avgMm);
+  Serial.print(" stableSpanMm=");
+  Serial.println(spanMm);
 }
 
 void setup() {
-  delay(1500);
+  delay(1200);
 
-  Serial.begin(115200);
-  delay(500);
+  Serial.begin(SERIAL_BAUD);
+  delay(300);
 
   Serial.println();
   Serial.println("===== FarmWhisper component validation baseline =====");
-
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonInterrupt, FALLING);
+  Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
+  Serial.println("[boot] USB CDC serial enabled");
+  Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
+  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app event");
+  Serial.println("[boot] NeoPixel: GPIO41 status model");
+  Serial.println("[boot] Display/OLED disabled");
+  Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 
   pixel.begin();
-  pixel.clear();
-  pixel.setBrightness(32);
-  setPixelStep(0);
+  pixel.setBrightness(40);
+  setPixel(0, 0, 30);
 
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  Wire.setClock(100000);
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
+  lastRawButton = digitalRead(PIN_BUTTON);
+  debouncedButton = lastRawButton;
+  rawButtonChangedAtMs = millis();
 
-  Serial.println("GPIO42 button active LOW");
-  Serial.println("GPIO42 interrupt attached on FALLING edge");
-  Serial.println("GPIO42 debounced button event path enabled");
-  Serial.println("GPIO41 NeoPixel color cycle enabled");
-  Serial.println("Product I2C: SDA GPIO45, SCL GPIO46");
+  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonFalling, FALLING);
 
-  scanI2cBusOnce();
-  setupTof();
+  Wire.begin(PIN_PRODUCT_I2C_SDA, PIN_PRODUCT_I2C_SCL);
+  Wire.setClock(400000);
+
+  const bool foundTof = scanProductI2cFor(0x29);
+
+  Serial.println();
+  Serial.println("[tof] Initializing VL53L1X");
+
+  tof.setTimeout(500);
+
+  if (!foundTof || !tof.init()) {
+    tofReady = false;
+    componentStatus = ComponentStatus::TofInitFailed;
+    Serial.println("[tof] ERROR: VL53L1X init failed");
+    return;
+  }
+
+  tof.setDistanceMode(VL53L1X::Long);
+  tof.setMeasurementTimingBudget(50000);
+  tof.startContinuous(100);
+  lastTofPollMs = millis();
+
+  tofReady = true;
+  componentStatus = ComponentStatus::TofWarming;
+
+  Serial.println("[tof] VL53L1X ready");
+  Serial.println("[tof] Mode=Long timingBudgetUs=50000 continuousPeriodMs=100");
+  Serial.println("[boot] Component validation loop started");
 }
 
 void loop() {
-  const unsigned long now = millis();
-
-  // Raw button state diagnostic only.
-  bool rawButtonState = digitalRead(PIN_BUTTON);
-
-  if (rawButtonState != lastRawButtonState) {
-    lastRawButtonState = rawButtonState;
-    Serial.printf("button raw=%s\n", rawButtonState == LOW ? "PRESSED" : "released");
-  }
-
-  // Debounced button event path for future application behavior.
-  handleButtonIrqEvent();
-
-  // NeoPixel color-cycle heartbeat.
-  if (now - lastPixelMs >= 500) {
-    lastPixelMs = now;
-    setPixelStep(colorStep++);
-  }
-
-  // ToF distance validation read.
-  if (now - lastTofReportMs >= 500) {
-    lastTofReportMs = now;
-    reportTofIfReady();
-  }
-
-  // Serial heartbeat.
-  if (now - lastHeartbeatMs >= 2000) {
-    lastHeartbeatMs = now;
-
-    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s lastValid=%s stable=%s stableMm=%s span=%u valid=%lu shady=%lu timeout=%lu\n",
-                  rawButtonState == LOW ? "PRESSED" : "released",
-                  static_cast<unsigned long>(getRawButtonIrqCount()),
-                  static_cast<unsigned long>(buttonPressCount),
-                  tofReady ? "ready" : "not-ready",
-                  formatLastValidTof(),
-                  tofStableStateText(),
-                  formatStableTof(),
-                  tofStableSpanMm,
-                  static_cast<unsigned long>(tofValidCount),
-                  static_cast<unsigned long>(tofShadyCount),
-                  static_cast<unsigned long>(tofTimeoutCount));
-  }
+  updateButton();
+  pollTof();
+  updateNeoPixel();
+  printHeartbeat();
 }
