@@ -17,7 +17,6 @@ VL53L1X tof;
 
 unsigned long lastPixelMs = 0;
 unsigned long lastHeartbeatMs = 0;
-unsigned long lastScanMs = 0;
 unsigned long lastTofReportMs = 0;
 
 uint8_t colorStep = 0;
@@ -63,9 +62,9 @@ bool i2cProbe(uint8_t addr) {
   return Wire.endTransmission() == 0;
 }
 
-void scanI2cBus() {
+void scanI2cBusOnce() {
   Serial.println();
-  Serial.println("I2C scan on product bus SDA=GPIO45 SCL=GPIO46");
+  Serial.println("Startup I2C scan on product bus SDA=GPIO45 SCL=GPIO46");
 
   uint8_t found = 0;
 
@@ -89,16 +88,13 @@ void scanI2cBus() {
     Serial.println("  no I2C devices found");
   }
 
-  if (i2cProbe(VL53L1X_ADDR)) {
-    Serial.println("VL53L1X presence: PASS");
-  } else {
-    Serial.println("VL53L1X presence: FAIL / not seen at 0x29");
-  }
+  Serial.printf("VL53L1X presence: %s\n",
+                i2cProbe(VL53L1X_ADDR) ? "PASS" : "FAIL / not seen at 0x29");
 }
 
 void setupTof() {
   Serial.println();
-  Serial.println("VL53L1X smoke setup");
+  Serial.println("VL53L1X setup");
 
   if (!i2cProbe(VL53L1X_ADDR)) {
     Serial.println("VL53L1X init skipped: not seen at 0x29");
@@ -115,8 +111,6 @@ void setupTof() {
     return;
   }
 
-  // Keep this conservative for first product-bus ranging smoke test.
-  // Long mode is useful for feed-bin geometry later, but this is not calibration yet.
   if (!tof.setDistanceMode(VL53L1X::Long)) {
     Serial.println("VL53L1X distance mode: FAIL");
     tofReady = false;
@@ -143,7 +137,6 @@ void reportTofIfReady() {
     return;
   }
 
-  // Pololu docs warn not to call read(false) before dataReady().
   if (!tof.dataReady()) {
     return;
   }
@@ -167,7 +160,7 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("===== FarmWhisper VL53L1X distance smoke test =====");
+  Serial.println("===== FarmWhisper component validation baseline =====");
 
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonInterrupt, FALLING);
@@ -185,14 +178,14 @@ void setup() {
   Serial.println("GPIO41 NeoPixel color cycle enabled");
   Serial.println("Product I2C: SDA GPIO45, SCL GPIO46");
 
-  scanI2cBus();
+  scanI2cBusOnce();
   setupTof();
 }
 
 void loop() {
   const unsigned long now = millis();
 
-  // Normal polling path preserved.
+  // Button polling path.
   bool buttonState = digitalRead(PIN_BUTTON);
 
   if (buttonState != lastButtonState) {
@@ -200,7 +193,7 @@ void loop() {
     Serial.printf("button poll=%s\n", buttonState == LOW ? "PRESSED" : "released");
   }
 
-  // Interrupt path preserved.
+  // Button interrupt path.
   static uint32_t lastReportedIrqCount = 0;
   static unsigned long lastAcceptedPressMs = 0;
 
@@ -219,14 +212,14 @@ void loop() {
     }
   }
 
-  // NeoPixel heartbeat / color cycle.
+  // NeoPixel color-cycle heartbeat.
   if (now - lastPixelMs >= 500) {
     lastPixelMs = now;
     setPixelStep(colorStep++);
   }
 
-  // ToF distance smoke read.
-  if (now - lastTofReportMs >= 250) {
+  // ToF distance validation read.
+  if (now - lastTofReportMs >= 500) {
     lastTofReportMs = now;
     reportTofIfReady();
   }
@@ -244,11 +237,5 @@ void loop() {
                   buttonState == LOW ? "PRESSED" : "released",
                   static_cast<unsigned long>(irqCountSnapshot),
                   tofReady ? "ready" : "not-ready");
-  }
-
-  // Keep the scanner, but slow it down so distance output is readable.
-  if (now - lastScanMs >= 10000) {
-    lastScanMs = now;
-    scanI2cBus();
   }
 }
