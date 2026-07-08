@@ -12,6 +12,8 @@ static constexpr int PIN_PIXEL  = 41;
 static constexpr uint8_t PIXEL_COUNT = 1;
 static constexpr uint8_t VL53L1X_ADDR = 0x29;
 
+static constexpr unsigned long BUTTON_DEBOUNCE_MS = 75;
+
 Adafruit_NeoPixel pixel(PIXEL_COUNT, PIN_PIXEL, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
 
@@ -20,15 +22,18 @@ unsigned long lastHeartbeatMs = 0;
 unsigned long lastTofReportMs = 0;
 
 uint8_t colorStep = 0;
-bool lastButtonState = HIGH;
+bool lastRawButtonState = HIGH;
 bool tofReady = false;
 
+uint32_t buttonPressCount = 0;
+unsigned long lastAcceptedButtonPressMs = 0;
+
 // ISR-owned state
-volatile uint32_t buttonIrqCount = 0;
+volatile uint32_t buttonRawIrqCount = 0;
 volatile bool buttonIrqFlag = false;
 
 void IRAM_ATTR onButtonInterrupt() {
-  buttonIrqCount++;
+  buttonRawIrqCount++;
   buttonIrqFlag = true;
 }
 
@@ -164,6 +169,43 @@ void reportTofIfReady() {
   }
 }
 
+uint32_t getRawButtonIrqCount() {
+  noInterrupts();
+  uint32_t snapshot = buttonRawIrqCount;
+  interrupts();
+
+  return snapshot;
+}
+
+void handleButtonIrqEvent() {
+  if (!buttonIrqFlag) {
+    return;
+  }
+
+  noInterrupts();
+  uint32_t rawIrqSnapshot = buttonRawIrqCount;
+  buttonIrqFlag = false;
+  interrupts();
+
+  const unsigned long now = millis();
+  const bool rawButtonState = digitalRead(PIN_BUTTON);
+
+  if (rawButtonState != LOW) {
+    return;
+  }
+
+  if (now - lastAcceptedButtonPressMs < BUTTON_DEBOUNCE_MS) {
+    return;
+  }
+
+  lastAcceptedButtonPressMs = now;
+  buttonPressCount++;
+
+  Serial.printf("button event=PRESSED pressCount=%lu rawIrq=%lu\n",
+                static_cast<unsigned long>(buttonPressCount),
+                static_cast<unsigned long>(rawIrqSnapshot));
+}
+
 void setup() {
   delay(1500);
 
@@ -186,6 +228,7 @@ void setup() {
 
   Serial.println("GPIO42 button active LOW");
   Serial.println("GPIO42 interrupt attached on FALLING edge");
+  Serial.println("GPIO42 debounced button event path enabled");
   Serial.println("GPIO41 NeoPixel color cycle enabled");
   Serial.println("Product I2C: SDA GPIO45, SCL GPIO46");
 
@@ -196,32 +239,16 @@ void setup() {
 void loop() {
   const unsigned long now = millis();
 
-  // Button polling path.
-  bool buttonState = digitalRead(PIN_BUTTON);
+  // Raw button state diagnostic only.
+  bool rawButtonState = digitalRead(PIN_BUTTON);
 
-  if (buttonState != lastButtonState) {
-    lastButtonState = buttonState;
-    Serial.printf("button poll=%s\n", buttonState == LOW ? "PRESSED" : "released");
+  if (rawButtonState != lastRawButtonState) {
+    lastRawButtonState = rawButtonState;
+    Serial.printf("button raw=%s\n", rawButtonState == LOW ? "PRESSED" : "released");
   }
 
-  // Button interrupt path.
-  static uint32_t lastReportedIrqCount = 0;
-  static unsigned long lastAcceptedPressMs = 0;
-
-  if (buttonIrqFlag) {
-    noInterrupts();
-    uint32_t irqCountSnapshot = buttonIrqCount;
-    buttonIrqFlag = false;
-    interrupts();
-
-    if (irqCountSnapshot != lastReportedIrqCount && now - lastAcceptedPressMs > 50) {
-      lastReportedIrqCount = irqCountSnapshot;
-      lastAcceptedPressMs = now;
-
-      Serial.printf("button interrupt press irqCount=%lu\n",
-                    static_cast<unsigned long>(irqCountSnapshot));
-    }
-  }
+  // Debounced button event path for future application behavior.
+  handleButtonIrqEvent();
 
   // NeoPixel color-cycle heartbeat.
   if (now - lastPixelMs >= 500) {
@@ -239,14 +266,10 @@ void loop() {
   if (now - lastHeartbeatMs >= 2000) {
     lastHeartbeatMs = now;
 
-    uint32_t irqCountSnapshot;
-    noInterrupts();
-    irqCountSnapshot = buttonIrqCount;
-    interrupts();
-
-    Serial.printf("heartbeat button=%s irqCount=%lu tof=%s\n",
-                  buttonState == LOW ? "PRESSED" : "released",
-                  static_cast<unsigned long>(irqCountSnapshot),
+    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s\n",
+                  rawButtonState == LOW ? "PRESSED" : "released",
+                  static_cast<unsigned long>(getRawButtonIrqCount()),
+                  static_cast<unsigned long>(buttonPressCount),
                   tofReady ? "ready" : "not-ready");
   }
 }
