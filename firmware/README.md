@@ -1,0 +1,63 @@
+# Firmware plan
+
+This directory is reserved for FarmWhisper firmware planning and future implementation notes. No firmware source code or PlatformIO configuration is added in this pass.
+
+## Intended firmware layout for FarmWhisper nodes
+
+The firmware for FarmWhisper nodes should be structured around a modular architecture that keeps the core application logic independent from hardware-specific details.
+
+### 1. Display-optional architecture
+
+- The firmware should be designed to run with or without the built-in display.
+- Display integration must remain optional so production behavior does not depend on a screen being present.
+- Core sensing, radio, and input handling should continue to work when the display is absent.
+
+### 2. Board abstraction / pin-contract layer
+
+- A board abstraction layer should define the hardware contract for each supported target board.
+- Pin assignments and peripheral capabilities should be centralized so firmware modules remain portable.
+- The current development board target is the Heltec WiFi LoRa 32 V4.
+- The display I2C pins are reserved for display use only and must not be reused for other peripherals.
+
+### 3. Sensor modules
+
+- Sensor modules should encapsulate the logic for each physical sensing component.
+- The first target hardware is the coop feed sensor.
+- The initial sensor stack includes a VL53L1X time-of-flight distance sensor.
+- Sensor modules should expose clear interfaces for initialization, sampling, calibration, and error state reporting.
+
+### 4. UI and status output modules
+
+- UI and status output modules should handle user-facing feedback and simple diagnostics.
+- The first target uses a single NeoPixel for visible status indication.
+- A big button should be handled through a dedicated input module that can trigger actions and state changes.
+- The onboard GPIO35 white LED is not a product status indicator and should not be used.
+
+### 5. LoRa / radio module
+
+- Radio functionality should be isolated in a dedicated module.
+- The radio layer should manage transport setup, packet formatting, and node-to-gateway messaging without embedding radio logic in application code.
+
+### 6. Persistent configuration and NVS
+
+- Persistent settings should be stored in non-volatile storage.
+- Configuration values should be versioned and loaded at startup with safe defaults.
+- NVS-backed settings are the preferred pattern for node-specific runtime configuration.
+
+### 7. Calibration storage
+
+- Calibration values should be stored separately from general configuration.
+- The firmware should support loading, updating, and validating calibration data without coupling it to the main application flow.
+
+## Initial target scope
+
+- First product target: coop feed sensor.
+- Hardware baseline: Heltec WiFi LoRa 32 V4 development board.
+- Sensor baseline: VL53L1X ToF sensor.
+- Output baseline: one NeoPixel.
+- Input baseline: big button.
+
+## Notes
+
+- This pass is documentation-only.
+- Firmware source code and PlatformIO files will be added in a later pass.
