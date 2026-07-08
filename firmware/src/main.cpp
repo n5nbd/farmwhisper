@@ -18,6 +18,7 @@ static constexpr uint8_t PIN_PRODUCT_I2C_SDA = 45;
 static constexpr uint8_t PIN_PRODUCT_I2C_SCL = 46;
 static constexpr uint8_t PIN_BUTTON = 42;
 static constexpr uint8_t FW_PIN_NEOPIXEL = 41;
+static constexpr uint8_t PIN_SPARE_GPIO37 = 37;
 
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
@@ -519,6 +520,8 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(buttonText(digitalRead(PIN_BUTTON)));
   Serial.print(" rawIrqCount=");
   Serial.print(rawButtonIrqCount);
+  Serial.print(" gpio37=");
+  Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" pressCount=");
   Serial.print(pressCount);
   Serial.print(" longPressCount=");
@@ -565,12 +568,20 @@ void printHeartbeat() {
   printStatusSnapshot("[heartbeat]");
 }
 
+void printGpioSmokeStatus(const char *prefix) {
+  Serial.print(prefix);
+  Serial.print(" gpio37=");
+  Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.println(" mode=INPUT_PULLUP expected=HIGH/open LOW/jumpered-to-GND");
+}
+
 void printSerialHelp() {
   Serial.println();
   Serial.println("[serial] Commands:");
   Serial.println("[serial]   h or ?  help");
   Serial.println("[serial]   s       print status snapshot");
   Serial.println("[serial]   i       rescan product I2C bus");
+  Serial.println("[serial]   g       print GPIO37 smoke-test state");
   Serial.println("[serial]   r       reset runtime diagnostics");
 }
 
@@ -631,6 +642,11 @@ void processSerialCommand(char command) {
       scanProductI2cFor(0x29);
       break;
 
+    case 'g':
+    case 'G':
+      printGpioSmokeStatus("[gpio]");
+      break;
+
     case 'r':
     case 'R':
       resetRuntimeDiagnostics();
@@ -680,7 +696,8 @@ void setup() {
   Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
   Serial.println("[boot] Button events: short press, long press, double press, triple press");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
-  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, r reset counters");
+  Serial.println("[boot] GPIO37: spare/questionable GPIO smoke test as INPUT_PULLUP");
+  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio37, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 
@@ -689,6 +706,7 @@ void setup() {
   setPixel(0, 0, 30);
 
   pinMode(PIN_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_SPARE_GPIO37, INPUT_PULLUP);
   lastRawButton = digitalRead(PIN_BUTTON);
   debouncedButton = lastRawButton;
   rawButtonChangedAtMs = millis();
