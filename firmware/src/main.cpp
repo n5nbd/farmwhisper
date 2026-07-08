@@ -4,9 +4,11 @@
 
 #include "fw_button.h"
 #include "fw_config.h"
+#include "fw_expansion_gpio.h"
 #include "fw_pins.h"
 #include "fw_product_i2c.h"
 #include "fw_status_pixel.h"
+#include "fw_tof_stability.h"
 #include "fw_types.h"
 
 VL53L1X tof;
@@ -20,10 +22,6 @@ static uint32_t tofShadyCount = 0;
 static uint32_t tofTimeoutCount = 0;
 static uint16_t lastValidTofMm = 0;
 static bool hasLastValidTof = false;
-
-static uint16_t stabilityWindow[FWConfig::StabilityWindowSize] = {};
-static uint8_t stabilityCount = 0;
-static uint8_t stabilityWriteIndex = 0;
 
 static uint32_t lastHeartbeatMs = 0;
 static uint32_t lastTofPollMs = 0;
@@ -47,63 +45,6 @@ const char *statusText(ComponentStatus status) {
     default:
       return "UNKNOWN";
   }
-}
-
-void addValidStabilitySample(uint16_t mm) {
-  stabilityWindow[stabilityWriteIndex] = mm;
-  stabilityWriteIndex = (stabilityWriteIndex + 1) % FWConfig::StabilityWindowSize;
-
-  if (stabilityCount < FWConfig::StabilityWindowSize) {
-    stabilityCount++;
-  }
-}
-
-bool computeStability(uint16_t &avgMm, uint16_t &spanMm) {
-  if (stabilityCount == 0) {
-    avgMm = 0;
-    spanMm = 0;
-    return false;
-  }
-
-  uint32_t sum = 0;
-  uint16_t minMm = stabilityWindow[0];
-  uint16_t maxMm = stabilityWindow[0];
-
-  for (uint8_t i = 0; i < stabilityCount; i++) {
-    const uint16_t value = stabilityWindow[i];
-    sum += value;
-
-    if (value < minMm) {
-      minMm = value;
-    }
-
-    if (value > maxMm) {
-      maxMm = value;
-    }
-  }
-
-  avgMm = static_cast<uint16_t>(sum / stabilityCount);
-  spanMm = maxMm - minMm;
-
-  return stabilityCount == FWConfig::StabilityWindowSize && spanMm <= FWConfig::StabilityMaxSpanMm;
-}
-
-void printStabilitySummary() {
-  uint16_t avgMm = 0;
-  uint16_t spanMm = 0;
-  const bool stable = computeStability(avgMm, spanMm);
-
-  Serial.print(" stable=");
-  if (stabilityCount < FWConfig::StabilityWindowSize) {
-    Serial.print("warming");
-  } else {
-    Serial.print(stable ? "yes" : "no");
-  }
-
-  Serial.print(" stableAvgMm=");
-  Serial.print(avgMm);
-  Serial.print(" stableSpanMm=");
-  Serial.print(spanMm);
 }
 
 void pollTof() {
@@ -133,7 +74,7 @@ void pollTof() {
       } else {
         Serial.print("none");
       }
-      printStabilitySummary();
+      FWToFStability::printSummary();
       Serial.println();
     }
 
@@ -160,7 +101,7 @@ void pollTof() {
       } else {
         Serial.print("none");
       }
-      printStabilitySummary();
+      FWToFStability::printSummary();
       Serial.println();
     }
 
@@ -170,13 +111,13 @@ void pollTof() {
   tofValidCount++;
   lastValidTofMm = distanceMm;
   hasLastValidTof = true;
-  addValidStabilitySample(distanceMm);
+  FWToFStability::addValidSample(distanceMm);
 
   uint16_t avgMm = 0;
   uint16_t spanMm = 0;
-  const bool stable = computeStability(avgMm, spanMm);
+  const bool stable = FWToFStability::compute(avgMm, spanMm);
 
-  if (stabilityCount < FWConfig::StabilityWindowSize) {
+  if (FWToFStability::isWarming()) {
     componentStatus = ComponentStatus::TofWarming;
   } else if (stable) {
     componentStatus = ComponentStatus::TofStable;
@@ -193,7 +134,7 @@ void pollTof() {
     Serial.print(tofValidCount);
     Serial.print(" lastValidMm=");
     Serial.print(lastValidTofMm);
-    printStabilitySummary();
+    FWToFStability::printSummary();
     Serial.println();
   }
 }
@@ -201,7 +142,7 @@ void pollTof() {
 void printStatusSnapshot(const char *prefix) {
   uint16_t avgMm = 0;
   uint16_t spanMm = 0;
-  const bool stable = computeStability(avgMm, spanMm);
+  const bool stable = FWToFStability::compute(avgMm, spanMm);
 
   Serial.print(prefix);
   Serial.print(" ms=");
@@ -247,7 +188,7 @@ void printStatusSnapshot(const char *prefix) {
     Serial.print("none");
   }
   Serial.print(" stable=");
-  if (stabilityCount < FWConfig::StabilityWindowSize) {
+  if (FWToFStability::isWarming()) {
     Serial.print("warming");
   } else {
     Serial.print(stable ? "yes" : "no");
@@ -266,19 +207,6 @@ void printHeartbeat() {
   lastHeartbeatMs = now;
 
   printStatusSnapshot("[heartbeat]");
-}
-
-void printGpioSmokeStatus(const char *prefix) {
-  Serial.print(prefix);
-  Serial.print(" gpio37=");
-  Serial.print(digitalRead(FWPin::SpareGpio37) == LOW ? "LOW/grounded" : "HIGH/open");
-  Serial.print(" gpio38=");
-  Serial.print(digitalRead(FWPin::ExpansionGpio38) == LOW ? "LOW/grounded" : "HIGH/open");
-  Serial.print(" gpio39=");
-  Serial.print(digitalRead(FWPin::ExpansionGpio39) == LOW ? "LOW/grounded" : "HIGH/open");
-  Serial.print(" gpio40=");
-  Serial.print(digitalRead(FWPin::ExpansionGpio40) == LOW ? "LOW/grounded" : "HIGH/open");
-  Serial.println(" mode=INPUT_PULLUP expected=HIGH/open LOW/jumpered-to-GND");
 }
 
 void printSerialHelp() {
@@ -301,11 +229,7 @@ void resetRuntimeDiagnostics() {
   lastValidTofMm = 0;
   hasLastValidTof = false;
 
-  for (uint8_t i = 0; i < FWConfig::StabilityWindowSize; i++) {
-    stabilityWindow[i] = 0;
-  }
-  stabilityCount = 0;
-  stabilityWriteIndex = 0;
+  FWToFStability::reset();
 
   FWStatusPixel::clearButtonOverlay();
 
@@ -339,7 +263,7 @@ void processSerialCommand(char command) {
 
     case 'g':
     case 'G':
-      printGpioSmokeStatus("[gpio]");
+      FWExpansionGPIO::printSmokeStatus("[gpio]");
       break;
 
     case 'v':
@@ -406,10 +330,7 @@ void setup() {
   FWStatusPixel::begin();
 
   FWButton::begin();
-  pinMode(FWPin::SpareGpio37, INPUT_PULLUP);
-  pinMode(FWPin::ExpansionGpio38, INPUT_PULLUP);
-  pinMode(FWPin::ExpansionGpio39, INPUT_PULLUP);
-  pinMode(FWPin::ExpansionGpio40, INPUT_PULLUP);
+  FWExpansionGPIO::begin();
 
   Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
   Wire.setClock(400000);
