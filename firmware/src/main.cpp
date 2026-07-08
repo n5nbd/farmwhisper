@@ -3,25 +3,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <VL53L1X.h>
 
-// FarmWhisper Heltec WiFi LoRa 32 V4 R2/R8 base connector contract.
-// Header J3 bottom-up:
-// 1 GND
-// 2 3V3
-// 3 3V3 / aux 3V3
-// 4 GPIO37 spare/questionable GPIO
-// 5 GPIO46 product I2C SCL
-// 6 GPIO45 product I2C SDA
-// 7 GPIO42 big button, active LOW
-// 8 GPIO41 NeoPixel data
-
-static constexpr uint8_t PIN_PRODUCT_I2C_SDA = 45;
-static constexpr uint8_t PIN_PRODUCT_I2C_SCL = 46;
-static constexpr uint8_t PIN_BUTTON = 42;
-static constexpr uint8_t FW_PIN_NEOPIXEL = 41;
-static constexpr uint8_t PIN_SPARE_GPIO37 = 37;
-static constexpr uint8_t PIN_EXP_GPIO38 = 38;
-static constexpr uint8_t PIN_EXP_GPIO39 = 39;
-static constexpr uint8_t PIN_EXP_GPIO40 = 40;
+#include "fw_pins.h"
 
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
@@ -39,7 +21,7 @@ static constexpr uint32_t TOF_POLL_MS = 100;
 static constexpr uint8_t STABILITY_WINDOW_SIZE = 5;
 static constexpr uint16_t STABILITY_MAX_SPAN_MM = 25;
 
-Adafruit_NeoPixel pixel(1, FW_PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixel(1, FWPin::StatusPixel, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
 
 enum class ComponentStatus {
@@ -354,7 +336,7 @@ void finishPendingShortPressSequenceIfReady(uint32_t now) {
 
 void updateButton() {
   const uint32_t now = millis();
-  const bool rawButton = digitalRead(PIN_BUTTON);
+  const bool rawButton = digitalRead(FWPin::BigButton);
 
   if (rawButton != lastRawButton) {
     lastRawButton = rawButton;
@@ -529,17 +511,17 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(" status=");
   Serial.print(statusText(componentStatus));
   Serial.print(" rawButton=");
-  Serial.print(buttonText(digitalRead(PIN_BUTTON)));
+  Serial.print(buttonText(digitalRead(FWPin::BigButton)));
   Serial.print(" rawIrqCount=");
   Serial.print(rawButtonIrqCount);
   Serial.print(" gpio37=");
-  Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::SpareGpio37) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio38=");
-  Serial.print(digitalRead(PIN_EXP_GPIO38) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio38) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio39=");
-  Serial.print(digitalRead(PIN_EXP_GPIO39) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio39) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio40=");
-  Serial.print(digitalRead(PIN_EXP_GPIO40) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio40) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" pressCount=");
   Serial.print(pressCount);
   Serial.print(" longPressCount=");
@@ -591,13 +573,13 @@ void printHeartbeat() {
 void printGpioSmokeStatus(const char *prefix) {
   Serial.print(prefix);
   Serial.print(" gpio37=");
-  Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::SpareGpio37) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio38=");
-  Serial.print(digitalRead(PIN_EXP_GPIO38) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio38) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio39=");
-  Serial.print(digitalRead(PIN_EXP_GPIO39) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio39) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio40=");
-  Serial.print(digitalRead(PIN_EXP_GPIO40) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(digitalRead(FWPin::ExpansionGpio40) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.println(" mode=INPUT_PULLUP expected=HIGH/open LOW/jumpered-to-GND");
 }
 
@@ -739,18 +721,18 @@ void setup() {
   pixel.setBrightness(40);
   setPixel(0, 0, 30);
 
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
-  pinMode(PIN_SPARE_GPIO37, INPUT_PULLUP);
-  pinMode(PIN_EXP_GPIO38, INPUT_PULLUP);
-  pinMode(PIN_EXP_GPIO39, INPUT_PULLUP);
-  pinMode(PIN_EXP_GPIO40, INPUT_PULLUP);
-  lastRawButton = digitalRead(PIN_BUTTON);
+  pinMode(FWPin::BigButton, INPUT_PULLUP);
+  pinMode(FWPin::SpareGpio37, INPUT_PULLUP);
+  pinMode(FWPin::ExpansionGpio38, INPUT_PULLUP);
+  pinMode(FWPin::ExpansionGpio39, INPUT_PULLUP);
+  pinMode(FWPin::ExpansionGpio40, INPUT_PULLUP);
+  lastRawButton = digitalRead(FWPin::BigButton);
   debouncedButton = lastRawButton;
   rawButtonChangedAtMs = millis();
 
-  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonFalling, FALLING);
+  attachInterrupt(digitalPinToInterrupt(FWPin::BigButton), onButtonFalling, FALLING);
 
-  Wire.begin(PIN_PRODUCT_I2C_SDA, PIN_PRODUCT_I2C_SCL);
+  Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
   Wire.setClock(400000);
 
   const bool foundTof = scanProductI2cFor(0x29);
