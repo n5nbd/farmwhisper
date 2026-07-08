@@ -6,6 +6,19 @@ This directory is reserved for FarmWhisper firmware planning and future implemen
 
 The firmware for FarmWhisper nodes should be structured around a modular architecture that keeps the core application logic independent from hardware-specific details.
 
+### Pin contract note
+
+The firmware now includes a small pin-contract layer in [include/fw_pins.h](include/fw_pins.h) for the Heltec WiFi LoRa 32 V4 development board. The known development pins are declared there, including:
+
+- display SDA on GPIO17
+- display SCL on GPIO18
+- display reset on GPIO21
+- display Vext on GPIO36 (active LOW)
+- onboard white LED on GPIO35 (not for product status use)
+- development/PRG button input on GPIO0 (active LOW)
+
+The display I2C pins remain reserved for display use only and must not be reused for sensors or other peripherals. Product-specific pins for the NeoPixel and big button are intentionally left as placeholders for future assignment.
+
 ### 1. Display-optional architecture
 
 - The firmware should be designed to run with or without the built-in display.
