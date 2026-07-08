@@ -19,6 +19,9 @@ static constexpr uint8_t PIN_PRODUCT_I2C_SCL = 46;
 static constexpr uint8_t PIN_BUTTON = 42;
 static constexpr uint8_t FW_PIN_NEOPIXEL = 41;
 static constexpr uint8_t PIN_SPARE_GPIO37 = 37;
+static constexpr uint8_t PIN_EXP_GPIO38 = 38;
+static constexpr uint8_t PIN_EXP_GPIO39 = 39;
+static constexpr uint8_t PIN_EXP_GPIO40 = 40;
 
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
@@ -80,6 +83,7 @@ static uint32_t buttonFlashUntilMs = 0;
 static ButtonOverlay buttonOverlay = ButtonOverlay::None;
 
 static bool tofReady = false;
+static bool tofVerboseLogging = false;
 static uint32_t tofValidCount = 0;
 static uint32_t tofShadyCount = 0;
 static uint32_t tofTimeoutCount = 0;
@@ -440,16 +444,19 @@ void pollTof() {
     tofTimeoutCount++;
     componentStatus = ComponentStatus::TofTimeout;
 
-    Serial.print("[tof] timeout timeoutCount=");
-    Serial.print(tofTimeoutCount);
-    Serial.print(" lastValidMm=");
-    if (hasLastValidTof) {
-      Serial.print(lastValidTofMm);
-    } else {
-      Serial.print("none");
+    if (tofVerboseLogging) {
+      Serial.print("[tof] timeout timeoutCount=");
+      Serial.print(tofTimeoutCount);
+      Serial.print(" lastValidMm=");
+      if (hasLastValidTof) {
+        Serial.print(lastValidTofMm);
+      } else {
+        Serial.print("none");
+      }
+      printStabilitySummary();
+      Serial.println();
     }
-    printStabilitySummary();
-    Serial.println();
+
     return;
   }
 
@@ -460,20 +467,23 @@ void pollTof() {
     tofShadyCount++;
     componentStatus = ComponentStatus::TofShady;
 
-    Serial.print("[tof] ~");
-    Serial.print(distanceMm);
-    Serial.print(" mm status=");
-    Serial.print(rangeStatusName);
-    Serial.print(" shadyCount=");
-    Serial.print(tofShadyCount);
-    Serial.print(" lastValidMm=");
-    if (hasLastValidTof) {
-      Serial.print(lastValidTofMm);
-    } else {
-      Serial.print("none");
+    if (tofVerboseLogging) {
+      Serial.print("[tof] ~");
+      Serial.print(distanceMm);
+      Serial.print(" mm status=");
+      Serial.print(rangeStatusName);
+      Serial.print(" shadyCount=");
+      Serial.print(tofShadyCount);
+      Serial.print(" lastValidMm=");
+      if (hasLastValidTof) {
+        Serial.print(lastValidTofMm);
+      } else {
+        Serial.print("none");
+      }
+      printStabilitySummary();
+      Serial.println();
     }
-    printStabilitySummary();
-    Serial.println();
+
     return;
   }
 
@@ -494,16 +504,18 @@ void pollTof() {
     componentStatus = ComponentStatus::TofUnstable;
   }
 
-  Serial.print("[tof] ");
-  Serial.print(distanceMm);
-  Serial.print(" mm status=");
-  Serial.print(rangeStatusName);
-  Serial.print(" validCount=");
-  Serial.print(tofValidCount);
-  Serial.print(" lastValidMm=");
-  Serial.print(lastValidTofMm);
-  printStabilitySummary();
-  Serial.println();
+  if (tofVerboseLogging) {
+    Serial.print("[tof] ");
+    Serial.print(distanceMm);
+    Serial.print(" mm status=");
+    Serial.print(rangeStatusName);
+    Serial.print(" validCount=");
+    Serial.print(tofValidCount);
+    Serial.print(" lastValidMm=");
+    Serial.print(lastValidTofMm);
+    printStabilitySummary();
+    Serial.println();
+  }
 }
 
 void printStatusSnapshot(const char *prefix) {
@@ -522,6 +534,12 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(rawButtonIrqCount);
   Serial.print(" gpio37=");
   Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio38=");
+  Serial.print(digitalRead(PIN_EXP_GPIO38) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio39=");
+  Serial.print(digitalRead(PIN_EXP_GPIO39) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio40=");
+  Serial.print(digitalRead(PIN_EXP_GPIO40) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" pressCount=");
   Serial.print(pressCount);
   Serial.print(" longPressCount=");
@@ -534,6 +552,8 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(pendingShortPresses);
   Serial.print(" tofReady=");
   Serial.print(tofReady ? "yes" : "no");
+  Serial.print(" tofVerbose=");
+  Serial.print(tofVerboseLogging ? "on" : "off");
   Serial.print(" tofValid=");
   Serial.print(tofValidCount);
   Serial.print(" tofShady=");
@@ -572,6 +592,12 @@ void printGpioSmokeStatus(const char *prefix) {
   Serial.print(prefix);
   Serial.print(" gpio37=");
   Serial.print(digitalRead(PIN_SPARE_GPIO37) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio38=");
+  Serial.print(digitalRead(PIN_EXP_GPIO38) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio39=");
+  Serial.print(digitalRead(PIN_EXP_GPIO39) == LOW ? "LOW/grounded" : "HIGH/open");
+  Serial.print(" gpio40=");
+  Serial.print(digitalRead(PIN_EXP_GPIO40) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.println(" mode=INPUT_PULLUP expected=HIGH/open LOW/jumpered-to-GND");
 }
 
@@ -581,7 +607,8 @@ void printSerialHelp() {
   Serial.println("[serial]   h or ?  help");
   Serial.println("[serial]   s       print status snapshot");
   Serial.println("[serial]   i       rescan product I2C bus");
-  Serial.println("[serial]   g       print GPIO37 smoke-test state");
+  Serial.println("[serial]   g       print GPIO37/38/39/40 smoke-test states");
+  Serial.println("[serial]   v       toggle verbose per-sample ToF logging");
   Serial.println("[serial]   r       reset runtime diagnostics");
 }
 
@@ -647,6 +674,13 @@ void processSerialCommand(char command) {
       printGpioSmokeStatus("[gpio]");
       break;
 
+    case 'v':
+    case 'V':
+      tofVerboseLogging = !tofVerboseLogging;
+      Serial.print("[serial] ToF verbose logging=");
+      Serial.println(tofVerboseLogging ? "on" : "off");
+      break;
+
     case 'r':
     case 'R':
       resetRuntimeDiagnostics();
@@ -696,8 +730,8 @@ void setup() {
   Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
   Serial.println("[boot] Button events: short press, long press, double press, triple press");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
-  Serial.println("[boot] GPIO37: spare/questionable GPIO smoke test as INPUT_PULLUP");
-  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio37, r reset counters");
+  Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
+  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 
@@ -707,6 +741,9 @@ void setup() {
 
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_SPARE_GPIO37, INPUT_PULLUP);
+  pinMode(PIN_EXP_GPIO38, INPUT_PULLUP);
+  pinMode(PIN_EXP_GPIO39, INPUT_PULLUP);
+  pinMode(PIN_EXP_GPIO40, INPUT_PULLUP);
   lastRawButton = digitalRead(PIN_BUTTON);
   debouncedButton = lastRawButton;
   rawButtonChangedAtMs = millis();
