@@ -2,6 +2,7 @@
 
 namespace FWSerialDiag {
 
+void printBootBanner();
 void printHelp();
 void handleCommands();
 void printHeartbeat();

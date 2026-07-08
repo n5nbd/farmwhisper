@@ -16,18 +16,7 @@ void setup() {
   Serial.begin(FWConfig::SerialBaud);
   delay(300);
 
-  Serial.println();
-  Serial.println("===== FarmWhisper component validation baseline =====");
-  Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
-  Serial.println("[boot] USB CDC serial enabled");
-  Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
-  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
-  Serial.println("[boot] Button events: short press, long press, double press, triple press");
-  Serial.println("[boot] NeoPixel: GPIO41 status model");
-  Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
-  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, r reset counters");
-  Serial.println("[boot] Display/OLED disabled");
-  Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
+  FWSerialDiag::printBootBanner();
 
   FWStatusPixel::begin();
 
