@@ -19,6 +19,27 @@ This directory is reserved for FarmWhisper hardware planning and future design n
   - single NeoPixel
   - big button
 
+## Base connector concept
+
+FarmWhisper should use an 8-pin peripheral connector as the preferred base connector for product nodes unless a product has a clear need for more signals.
+
+Candidate physical order:
+
+1. GND
+2. 3V3
+3. 3V3 / aux 3V3
+4. GPIO TBD, likely big button input
+5. SDA GPIO45, product I2C bus
+6. SCL GPIO46, product I2C bus
+7. GPIO TBD, likely NeoPixel data
+8. GPIO TBD, spare / interrupt / enable / future use
+
+This connector is intended to cover common FarmWhisper node needs: I2C sensor bus, power, ground, one status output, one user/service input, and one spare signal.
+
+Ten-pin or additional connectors may be used for special nodes, but the 8-pin connector is the preferred base connector unless a product has a clear need for more signals.
+
+Display I2C remains separate and reserved for display only. Final TBD GPIO selection requires physical board and header verification and should avoid bootstrapping, USB, flash/PSRAM, LoRa, display, and other reserved or special pins.
+
 ## Future hardware notes
 
 Reserve room in this directory for notes on:
