@@ -505,19 +505,14 @@ void pollTof() {
   Serial.println();
 }
 
-void printHeartbeat() {
-  const uint32_t now = millis();
-  if ((now - lastHeartbeatMs) < HEARTBEAT_MS) {
-    return;
-  }
-  lastHeartbeatMs = now;
-
+void printStatusSnapshot(const char *prefix) {
   uint16_t avgMm = 0;
   uint16_t spanMm = 0;
   const bool stable = computeStability(avgMm, spanMm);
 
-  Serial.print("[heartbeat] ms=");
-  Serial.print(now);
+  Serial.print(prefix);
+  Serial.print(" ms=");
+  Serial.print(millis());
   Serial.print(" status=");
   Serial.print(statusText(componentStatus));
   Serial.print(" rawButton=");
@@ -534,6 +529,8 @@ void printHeartbeat() {
   Serial.print(triplePressCount);
   Serial.print(" pendingShortPresses=");
   Serial.print(pendingShortPresses);
+  Serial.print(" tofReady=");
+  Serial.print(tofReady ? "yes" : "no");
   Serial.print(" tofValid=");
   Serial.print(tofValidCount);
   Serial.print(" tofShady=");
@@ -558,6 +555,117 @@ void printHeartbeat() {
   Serial.println(spanMm);
 }
 
+void printHeartbeat() {
+  const uint32_t now = millis();
+  if ((now - lastHeartbeatMs) < HEARTBEAT_MS) {
+    return;
+  }
+  lastHeartbeatMs = now;
+
+  printStatusSnapshot("[heartbeat]");
+}
+
+void printSerialHelp() {
+  Serial.println();
+  Serial.println("[serial] Commands:");
+  Serial.println("[serial]   h or ?  help");
+  Serial.println("[serial]   s       print status snapshot");
+  Serial.println("[serial]   i       rescan product I2C bus");
+  Serial.println("[serial]   r       reset runtime diagnostics");
+}
+
+void resetRuntimeDiagnostics() {
+  noInterrupts();
+  rawButtonIrqCount = 0;
+  interrupts();
+
+  pressCount = 0;
+  longPressCount = 0;
+  doublePressCount = 0;
+  triplePressCount = 0;
+
+  pendingShortPresses = 0;
+  lastShortPressReleaseMs = 0;
+  buttonLongPressReported = false;
+
+  tofValidCount = 0;
+  tofShadyCount = 0;
+  tofTimeoutCount = 0;
+  lastValidTofMm = 0;
+  hasLastValidTof = false;
+
+  for (uint8_t i = 0; i < STABILITY_WINDOW_SIZE; i++) {
+    stabilityWindow[i] = 0;
+  }
+  stabilityCount = 0;
+  stabilityWriteIndex = 0;
+
+  buttonOverlay = ButtonOverlay::None;
+  buttonFlashUntilMs = 0;
+
+  if (tofReady) {
+    componentStatus = ComponentStatus::TofWarming;
+  } else {
+    componentStatus = ComponentStatus::TofInitFailed;
+  }
+
+  Serial.println("[serial] Runtime diagnostics reset");
+  printStatusSnapshot("[serial]");
+}
+
+void processSerialCommand(char command) {
+  switch (command) {
+    case 'h':
+    case 'H':
+    case '?':
+      printSerialHelp();
+      break;
+
+    case 's':
+    case 'S':
+      printStatusSnapshot("[serial]");
+      break;
+
+    case 'i':
+    case 'I':
+      scanProductI2cFor(0x29);
+      break;
+
+    case 'r':
+    case 'R':
+      resetRuntimeDiagnostics();
+      break;
+
+    default:
+      Serial.print("[serial] Unknown command: ");
+      Serial.println(command);
+      Serial.println("[serial] Type h or ? for help");
+      break;
+  }
+}
+
+void handleSerialCommands() {
+  while (Serial.available() > 0) {
+    const char c = static_cast<char>(Serial.read());
+
+    if (c == '\r' || c == '\n' || c == ' ' || c == '\t') {
+      continue;
+    }
+
+    processSerialCommand(c);
+
+    // Keep commands single-character for now.
+    while (Serial.available() > 0) {
+      const char discard = static_cast<char>(Serial.peek());
+      if (discard == '\r' || discard == '\n' || discard == ' ' || discard == '\t') {
+        Serial.read();
+      } else {
+        break;
+      }
+    }
+  }
+}
+
 void setup() {
   delay(1200);
 
@@ -572,6 +680,7 @@ void setup() {
   Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
   Serial.println("[boot] Button events: short press, long press, double press, triple press");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
+  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 
@@ -600,6 +709,7 @@ void setup() {
     tofReady = false;
     componentStatus = ComponentStatus::TofInitFailed;
     Serial.println("[tof] ERROR: VL53L1X init failed");
+    printSerialHelp();
     return;
   }
 
@@ -614,9 +724,12 @@ void setup() {
   Serial.println("[tof] VL53L1X ready");
   Serial.println("[tof] Mode=Long timingBudgetUs=50000 continuousPeriodMs=100");
   Serial.println("[boot] Component validation loop started");
+
+  printSerialHelp();
 }
 
 void loop() {
+  handleSerialCommands();
   updateButton();
   pollTof();
   updateNeoPixel();
