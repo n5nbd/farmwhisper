@@ -14,6 +14,9 @@ static constexpr uint8_t VL53L1X_ADDR = 0x29;
 
 static constexpr unsigned long BUTTON_DEBOUNCE_MS = 75;
 
+static constexpr uint8_t TOF_STABILITY_WINDOW = 5;
+static constexpr uint16_t TOF_STABILITY_MAX_SPAN_MM = 25;
+
 Adafruit_NeoPixel pixel(PIXEL_COUNT, PIN_PIXEL, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
 
@@ -39,6 +42,14 @@ uint16_t lastValidTofMm = 0;
 uint32_t tofValidCount = 0;
 uint32_t tofShadyCount = 0;
 uint32_t tofTimeoutCount = 0;
+
+// ToF stability window, using valid samples only
+uint16_t tofStableWindow[TOF_STABILITY_WINDOW] = {};
+uint8_t tofStableWindowCount = 0;
+uint8_t tofStableWindowNext = 0;
+bool tofStable = false;
+uint16_t tofStableMm = 0;
+uint16_t tofStableSpanMm = 0;
 
 void IRAM_ATTR onButtonInterrupt() {
   buttonRawIrqCount++;
@@ -85,6 +96,67 @@ const char* formatLastValidTof() {
   }
 
   return buffer;
+}
+
+const char* tofStableStateText() {
+  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
+    return "warming";
+  }
+
+  return tofStable ? "yes" : "no";
+}
+
+const char* formatStableTof() {
+  static char buffer[24];
+
+  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
+    snprintf(buffer, sizeof(buffer), "warming");
+  } else if (tofStable) {
+    snprintf(buffer, sizeof(buffer), "%u mm", tofStableMm);
+  } else {
+    snprintf(buffer, sizeof(buffer), "~%u mm", tofStableMm);
+  }
+
+  return buffer;
+}
+
+void updateTofStability(uint16_t distanceMm) {
+  tofStableWindow[tofStableWindowNext] = distanceMm;
+  tofStableWindowNext = (tofStableWindowNext + 1) % TOF_STABILITY_WINDOW;
+
+  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
+    tofStableWindowCount++;
+  }
+
+  if (tofStableWindowCount < TOF_STABILITY_WINDOW) {
+    tofStable = false;
+    tofStableMm = distanceMm;
+    tofStableSpanMm = 0;
+    return;
+  }
+
+  uint16_t minMm = UINT16_MAX;
+  uint16_t maxMm = 0;
+  uint32_t sumMm = 0;
+
+  for (uint8_t i = 0; i < TOF_STABILITY_WINDOW; i++) {
+    uint16_t value = tofStableWindow[i];
+
+    if (value < minMm) {
+      minMm = value;
+    }
+
+    if (value > maxMm) {
+      maxMm = value;
+    }
+
+    sumMm += value;
+  }
+
+  tofStableSpanMm = maxMm - minMm;
+  tofStableMm = static_cast<uint16_t>((sumMm + (TOF_STABILITY_WINDOW / 2)) /
+                                      TOF_STABILITY_WINDOW);
+  tofStable = tofStableSpanMm <= TOF_STABILITY_MAX_SPAN_MM;
 }
 
 void scanI2cBusOnce() {
@@ -156,6 +228,9 @@ void setupTof() {
   Serial.println("VL53L1X timing budget: 50000 us");
   Serial.println("VL53L1X continuous period: 100 ms");
   Serial.println("VL53L1X app path: only range-valid samples update lastValidTofMm");
+  Serial.printf("VL53L1X stability: %u valid samples within %u mm span\n",
+                TOF_STABILITY_WINDOW,
+                TOF_STABILITY_MAX_SPAN_MM);
 }
 
 void reportTofIfReady() {
@@ -172,8 +247,9 @@ void reportTofIfReady() {
   if (tof.timeoutOccurred()) {
     tofTimeoutCount++;
 
-    Serial.printf("tof ~=timeout status=timeout lastValid=%s timeoutCount=%lu\n",
+    Serial.printf("tof ~=timeout status=timeout lastValid=%s stable=%s timeoutCount=%lu\n",
                   formatLastValidTof(),
+                  formatStableTof(),
                   static_cast<unsigned long>(tofTimeoutCount));
     return;
   }
@@ -188,17 +264,23 @@ void reportTofIfReady() {
     lastValidTofMm = distanceMm;
     tofValidCount++;
 
-    Serial.printf("tof distance=%u mm status=%s validCount=%lu\n",
+    updateTofStability(distanceMm);
+
+    Serial.printf("tof distance=%u mm status=%s validCount=%lu stable=%s stableMm=%s span=%u\n",
                   distanceMm,
                   statusText,
-                  static_cast<unsigned long>(tofValidCount));
+                  static_cast<unsigned long>(tofValidCount),
+                  tofStableStateText(),
+                  formatStableTof(),
+                  tofStableSpanMm);
   } else {
     tofShadyCount++;
 
-    Serial.printf("tof ~=%u mm status=%s lastValid=%s shadyCount=%lu\n",
+    Serial.printf("tof ~=%u mm status=%s lastValid=%s stable=%s shadyCount=%lu\n",
                   distanceMm,
                   statusText,
                   formatLastValidTof(),
+                  formatStableTof(),
                   static_cast<unsigned long>(tofShadyCount));
   }
 }
@@ -300,12 +382,15 @@ void loop() {
   if (now - lastHeartbeatMs >= 2000) {
     lastHeartbeatMs = now;
 
-    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s lastValid=%s valid=%lu shady=%lu timeout=%lu\n",
+    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s lastValid=%s stable=%s stableMm=%s span=%u valid=%lu shady=%lu timeout=%lu\n",
                   rawButtonState == LOW ? "PRESSED" : "released",
                   static_cast<unsigned long>(getRawButtonIrqCount()),
                   static_cast<unsigned long>(buttonPressCount),
                   tofReady ? "ready" : "not-ready",
                   formatLastValidTof(),
+                  tofStableStateText(),
+                  formatStableTof(),
+                  tofStableSpanMm,
                   static_cast<unsigned long>(tofValidCount),
                   static_cast<unsigned long>(tofShadyCount),
                   static_cast<unsigned long>(tofTimeoutCount));
