@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <VL53L1X.h>
 
 #include "fw_button.h"
 #include "fw_config.h"
@@ -8,23 +7,11 @@
 #include "fw_pins.h"
 #include "fw_product_i2c.h"
 #include "fw_status_pixel.h"
+#include "fw_tof.h"
 #include "fw_tof_stability.h"
 #include "fw_types.h"
 
-VL53L1X tof;
-
-static ComponentStatus componentStatus = ComponentStatus::Booting;
-
-static bool tofReady = false;
-static bool tofVerboseLogging = false;
-static uint32_t tofValidCount = 0;
-static uint32_t tofShadyCount = 0;
-static uint32_t tofTimeoutCount = 0;
-static uint16_t lastValidTofMm = 0;
-static bool hasLastValidTof = false;
-
 static uint32_t lastHeartbeatMs = 0;
-static uint32_t lastTofPollMs = 0;
 
 const char *statusText(ComponentStatus status) {
   switch (status) {
@@ -47,98 +34,6 @@ const char *statusText(ComponentStatus status) {
   }
 }
 
-void pollTof() {
-  if (!tofReady) {
-    componentStatus = ComponentStatus::TofInitFailed;
-    return;
-  }
-
-  const uint32_t now = millis();
-  if ((now - lastTofPollMs) < FWConfig::TofPollMs) {
-    return;
-  }
-  lastTofPollMs = now;
-
-  const uint16_t distanceMm = tof.read();
-
-  if (tof.timeoutOccurred()) {
-    tofTimeoutCount++;
-    componentStatus = ComponentStatus::TofTimeout;
-
-    if (tofVerboseLogging) {
-      Serial.print("[tof] timeout timeoutCount=");
-      Serial.print(tofTimeoutCount);
-      Serial.print(" lastValidMm=");
-      if (hasLastValidTof) {
-        Serial.print(lastValidTofMm);
-      } else {
-        Serial.print("none");
-      }
-      FWToFStability::printSummary();
-      Serial.println();
-    }
-
-    return;
-  }
-
-  const VL53L1X::RangeStatus rangeStatus = tof.ranging_data.range_status;
-  const char *rangeStatusName = VL53L1X::rangeStatusToString(rangeStatus);
-
-  if (rangeStatus != VL53L1X::RangeValid) {
-    tofShadyCount++;
-    componentStatus = ComponentStatus::TofShady;
-
-    if (tofVerboseLogging) {
-      Serial.print("[tof] ~");
-      Serial.print(distanceMm);
-      Serial.print(" mm status=");
-      Serial.print(rangeStatusName);
-      Serial.print(" shadyCount=");
-      Serial.print(tofShadyCount);
-      Serial.print(" lastValidMm=");
-      if (hasLastValidTof) {
-        Serial.print(lastValidTofMm);
-      } else {
-        Serial.print("none");
-      }
-      FWToFStability::printSummary();
-      Serial.println();
-    }
-
-    return;
-  }
-
-  tofValidCount++;
-  lastValidTofMm = distanceMm;
-  hasLastValidTof = true;
-  FWToFStability::addValidSample(distanceMm);
-
-  uint16_t avgMm = 0;
-  uint16_t spanMm = 0;
-  const bool stable = FWToFStability::compute(avgMm, spanMm);
-
-  if (FWToFStability::isWarming()) {
-    componentStatus = ComponentStatus::TofWarming;
-  } else if (stable) {
-    componentStatus = ComponentStatus::TofStable;
-  } else {
-    componentStatus = ComponentStatus::TofUnstable;
-  }
-
-  if (tofVerboseLogging) {
-    Serial.print("[tof] ");
-    Serial.print(distanceMm);
-    Serial.print(" mm status=");
-    Serial.print(rangeStatusName);
-    Serial.print(" validCount=");
-    Serial.print(tofValidCount);
-    Serial.print(" lastValidMm=");
-    Serial.print(lastValidTofMm);
-    FWToFStability::printSummary();
-    Serial.println();
-  }
-}
-
 void printStatusSnapshot(const char *prefix) {
   uint16_t avgMm = 0;
   uint16_t spanMm = 0;
@@ -148,7 +43,7 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(" ms=");
   Serial.print(millis());
   Serial.print(" status=");
-  Serial.print(statusText(componentStatus));
+  Serial.print(statusText(FWToF::status()));
   Serial.print(" rawButton=");
   Serial.print(FWButton::buttonText(digitalRead(FWPin::BigButton)));
   Serial.print(" rawIrqCount=");
@@ -172,18 +67,18 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(" pendingShortPresses=");
   Serial.print(FWButton::pendingShortPresses());
   Serial.print(" tofReady=");
-  Serial.print(tofReady ? "yes" : "no");
+  Serial.print(FWToF::ready() ? "yes" : "no");
   Serial.print(" tofVerbose=");
-  Serial.print(tofVerboseLogging ? "on" : "off");
+  Serial.print(FWToF::verboseLogging() ? "on" : "off");
   Serial.print(" tofValid=");
-  Serial.print(tofValidCount);
+  Serial.print(FWToF::validCount());
   Serial.print(" tofShady=");
-  Serial.print(tofShadyCount);
+  Serial.print(FWToF::shadyCount());
   Serial.print(" tofTimeout=");
-  Serial.print(tofTimeoutCount);
+  Serial.print(FWToF::timeoutCount());
   Serial.print(" lastValidMm=");
-  if (hasLastValidTof) {
-    Serial.print(lastValidTofMm);
+  if (FWToF::hasLastValid()) {
+    Serial.print(FWToF::lastValidMm());
   } else {
     Serial.print("none");
   }
@@ -223,21 +118,9 @@ void printSerialHelp() {
 void resetRuntimeDiagnostics() {
   FWButton::resetDiagnostics();
 
-  tofValidCount = 0;
-  tofShadyCount = 0;
-  tofTimeoutCount = 0;
-  lastValidTofMm = 0;
-  hasLastValidTof = false;
-
-  FWToFStability::reset();
+  FWToF::resetDiagnostics();
 
   FWStatusPixel::clearButtonOverlay();
-
-  if (tofReady) {
-    componentStatus = ComponentStatus::TofWarming;
-  } else {
-    componentStatus = ComponentStatus::TofInitFailed;
-  }
 
   Serial.println("[serial] Runtime diagnostics reset");
   printStatusSnapshot("[serial]");
@@ -268,9 +151,9 @@ void processSerialCommand(char command) {
 
     case 'v':
     case 'V':
-      tofVerboseLogging = !tofVerboseLogging;
+      FWToF::toggleVerboseLogging();
       Serial.print("[serial] ToF verbose logging=");
-      Serial.println(tofVerboseLogging ? "on" : "off");
+      Serial.println(FWToF::verboseLogging() ? "on" : "off");
       break;
 
     case 'r':
@@ -337,29 +220,11 @@ void setup() {
 
   const bool foundTof = FWProductI2C::scanFor(0x29);
 
-  Serial.println();
-  Serial.println("[tof] Initializing VL53L1X");
-
-  tof.setTimeout(500);
-
-  if (!foundTof || !tof.init()) {
-    tofReady = false;
-    componentStatus = ComponentStatus::TofInitFailed;
-    Serial.println("[tof] ERROR: VL53L1X init failed");
+  if (!FWToF::begin(foundTof)) {
     printSerialHelp();
     return;
   }
 
-  tof.setDistanceMode(VL53L1X::Long);
-  tof.setMeasurementTimingBudget(50000);
-  tof.startContinuous(100);
-  lastTofPollMs = millis();
-
-  tofReady = true;
-  componentStatus = ComponentStatus::TofWarming;
-
-  Serial.println("[tof] VL53L1X ready");
-  Serial.println("[tof] Mode=Long timingBudgetUs=50000 continuousPeriodMs=100");
   Serial.println("[boot] Component validation loop started");
 
   printSerialHelp();
@@ -368,7 +233,7 @@ void setup() {
 void loop() {
   handleSerialCommands();
   FWButton::update();
-  pollTof();
-  FWStatusPixel::update(componentStatus);
+  FWToF::poll();
+  FWStatusPixel::update(FWToF::status());
   printHeartbeat();
 }
