@@ -3,24 +3,9 @@
 #include <Adafruit_NeoPixel.h>
 #include <VL53L1X.h>
 
+#include "fw_config.h"
 #include "fw_pins.h"
 #include "fw_types.h"
-
-static constexpr uint32_t SERIAL_BAUD = 115200;
-
-static constexpr uint32_t BUTTON_DEBOUNCE_MS = 35;
-static constexpr uint32_t BUTTON_LONG_PRESS_MS = 1200;
-static constexpr uint32_t BUTTON_MULTI_PRESS_GAP_MS = 450;
-
-static constexpr uint32_t BUTTON_SHORT_FLASH_MS = 150;
-static constexpr uint32_t BUTTON_LONG_FLASH_MS = 450;
-static constexpr uint32_t BUTTON_MULTI_FLASH_MS = 350;
-
-static constexpr uint32_t HEARTBEAT_MS = 1000;
-static constexpr uint32_t TOF_POLL_MS = 100;
-
-static constexpr uint8_t STABILITY_WINDOW_SIZE = 5;
-static constexpr uint16_t STABILITY_MAX_SPAN_MM = 25;
 
 Adafruit_NeoPixel pixel(1, FWPin::StatusPixel, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
@@ -55,7 +40,7 @@ static uint32_t tofTimeoutCount = 0;
 static uint16_t lastValidTofMm = 0;
 static bool hasLastValidTof = false;
 
-static uint16_t stabilityWindow[STABILITY_WINDOW_SIZE] = {};
+static uint16_t stabilityWindow[FWConfig::StabilityWindowSize] = {};
 static uint8_t stabilityCount = 0;
 static uint8_t stabilityWriteIndex = 0;
 
@@ -198,9 +183,9 @@ bool scanProductI2cFor(uint8_t expectedAddr) {
 
 void addValidStabilitySample(uint16_t mm) {
   stabilityWindow[stabilityWriteIndex] = mm;
-  stabilityWriteIndex = (stabilityWriteIndex + 1) % STABILITY_WINDOW_SIZE;
+  stabilityWriteIndex = (stabilityWriteIndex + 1) % FWConfig::StabilityWindowSize;
 
-  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+  if (stabilityCount < FWConfig::StabilityWindowSize) {
     stabilityCount++;
   }
 }
@@ -232,7 +217,7 @@ bool computeStability(uint16_t &avgMm, uint16_t &spanMm) {
   avgMm = static_cast<uint16_t>(sum / stabilityCount);
   spanMm = maxMm - minMm;
 
-  return stabilityCount == STABILITY_WINDOW_SIZE && spanMm <= STABILITY_MAX_SPAN_MM;
+  return stabilityCount == FWConfig::StabilityWindowSize && spanMm <= FWConfig::StabilityMaxSpanMm;
 }
 
 void printStabilitySummary() {
@@ -241,7 +226,7 @@ void printStabilitySummary() {
   const bool stable = computeStability(avgMm, spanMm);
 
   Serial.print(" stable=");
-  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+  if (stabilityCount < FWConfig::StabilityWindowSize) {
     Serial.print("warming");
   } else {
     Serial.print(stable ? "yes" : "no");
@@ -275,7 +260,7 @@ void printButtonEventCounters() {
 
 void fireDoublePressEvent() {
   doublePressCount++;
-  triggerButtonOverlay(ButtonOverlay::DoublePress, BUTTON_MULTI_FLASH_MS);
+  triggerButtonOverlay(ButtonOverlay::DoublePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] doublePress");
   printButtonEventCounters();
@@ -284,7 +269,7 @@ void fireDoublePressEvent() {
 
 void fireTriplePressEvent() {
   triplePressCount++;
-  triggerButtonOverlay(ButtonOverlay::TriplePress, BUTTON_MULTI_FLASH_MS);
+  triggerButtonOverlay(ButtonOverlay::TriplePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] triplePress");
   printButtonEventCounters();
@@ -300,7 +285,7 @@ void finishPendingShortPressSequenceIfReady(uint32_t now) {
     return;
   }
 
-  if ((now - lastShortPressReleaseMs) < BUTTON_MULTI_PRESS_GAP_MS) {
+  if ((now - lastShortPressReleaseMs) < FWConfig::ButtonMultiPressGapMs) {
     return;
   }
 
@@ -331,7 +316,7 @@ void updateButton() {
     Serial.println(rawButtonIrqCount);
   }
 
-  if ((now - rawButtonChangedAtMs) >= BUTTON_DEBOUNCE_MS && rawButton != debouncedButton) {
+  if ((now - rawButtonChangedAtMs) >= FWConfig::ButtonDebounceMs && rawButton != debouncedButton) {
     const bool previousDebouncedButton = debouncedButton;
     debouncedButton = rawButton;
 
@@ -342,7 +327,7 @@ void updateButton() {
       pressCount++;
       buttonPressedAtMs = now;
       buttonLongPressReported = false;
-      triggerButtonOverlay(ButtonOverlay::ShortPress, BUTTON_SHORT_FLASH_MS);
+      triggerButtonOverlay(ButtonOverlay::ShortPress, FWConfig::ButtonShortFlashMs);
 
       printButtonEventCounters();
     } else if (previousDebouncedButton == LOW) {
@@ -375,11 +360,11 @@ void updateButton() {
   if (debouncedButton == LOW && !buttonLongPressReported) {
     const uint32_t heldMs = now - buttonPressedAtMs;
 
-    if (heldMs >= BUTTON_LONG_PRESS_MS) {
+    if (heldMs >= FWConfig::ButtonLongPressMs) {
       buttonLongPressReported = true;
       longPressCount++;
       pendingShortPresses = 0;
-      triggerButtonOverlay(ButtonOverlay::LongPress, BUTTON_LONG_FLASH_MS);
+      triggerButtonOverlay(ButtonOverlay::LongPress, FWConfig::ButtonLongFlashMs);
 
       Serial.print("[button] longPress heldMs=");
       Serial.print(heldMs);
@@ -398,7 +383,7 @@ void pollTof() {
   }
 
   const uint32_t now = millis();
-  if ((now - lastTofPollMs) < TOF_POLL_MS) {
+  if ((now - lastTofPollMs) < FWConfig::TofPollMs) {
     return;
   }
   lastTofPollMs = now;
@@ -461,7 +446,7 @@ void pollTof() {
   uint16_t spanMm = 0;
   const bool stable = computeStability(avgMm, spanMm);
 
-  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+  if (stabilityCount < FWConfig::StabilityWindowSize) {
     componentStatus = ComponentStatus::TofWarming;
   } else if (stable) {
     componentStatus = ComponentStatus::TofStable;
@@ -532,7 +517,7 @@ void printStatusSnapshot(const char *prefix) {
     Serial.print("none");
   }
   Serial.print(" stable=");
-  if (stabilityCount < STABILITY_WINDOW_SIZE) {
+  if (stabilityCount < FWConfig::StabilityWindowSize) {
     Serial.print("warming");
   } else {
     Serial.print(stable ? "yes" : "no");
@@ -545,7 +530,7 @@ void printStatusSnapshot(const char *prefix) {
 
 void printHeartbeat() {
   const uint32_t now = millis();
-  if ((now - lastHeartbeatMs) < HEARTBEAT_MS) {
+  if ((now - lastHeartbeatMs) < FWConfig::HeartbeatMs) {
     return;
   }
   lastHeartbeatMs = now;
@@ -597,7 +582,7 @@ void resetRuntimeDiagnostics() {
   lastValidTofMm = 0;
   hasLastValidTof = false;
 
-  for (uint8_t i = 0; i < STABILITY_WINDOW_SIZE; i++) {
+  for (uint8_t i = 0; i < FWConfig::StabilityWindowSize; i++) {
     stabilityWindow[i] = 0;
   }
   stabilityCount = 0;
@@ -684,7 +669,7 @@ void handleSerialCommands() {
 void setup() {
   delay(1200);
 
-  Serial.begin(SERIAL_BAUD);
+  Serial.begin(FWConfig::SerialBaud);
   delay(300);
 
   Serial.println();
