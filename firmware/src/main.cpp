@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <Wire.h>
 
 #include "fw_button.h"
 #include "fw_config.h"
@@ -35,8 +34,7 @@ void setup() {
   FWButton::begin();
   FWExpansionGPIO::begin();
 
-  Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
-  Wire.setClock(400000);
+  FWProductI2C::begin();
 
   const bool foundTof = FWProductI2C::scanFor(0x29);
 

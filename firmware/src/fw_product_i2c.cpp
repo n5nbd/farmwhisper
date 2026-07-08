@@ -2,7 +2,14 @@
 
 #include <Wire.h>
 
+#include "fw_pins.h"
+
 namespace FWProductI2C {
+
+void begin() {
+  Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
+  Wire.setClock(400000);
+}
 
 bool scanFor(uint8_t expectedAddr) {
   Serial.println();
