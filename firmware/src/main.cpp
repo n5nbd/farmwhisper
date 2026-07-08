@@ -11,7 +11,33 @@ namespace {
   };
 
   constexpr int kButtonPin = FW_BIG_BUTTON_CANDIDATE;
+  constexpr int kNeoPixelPin = FW_NEOPIXEL_CANDIDATE;
   unsigned long lastHeartbeatMs = 0;
+
+  void writeNeoPixelByte(uint8_t value) {
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      digitalWrite(kNeoPixelPin, HIGH);
+      delayMicroseconds(4);
+      digitalWrite(kNeoPixelPin, (value & 0x80) ? HIGH : LOW);
+      delayMicroseconds(4);
+      digitalWrite(kNeoPixelPin, LOW);
+      delayMicroseconds(4);
+      value <<= 1;
+    }
+  }
+
+  void writeNeoPixelColor(uint8_t red, uint8_t green, uint8_t blue) {
+    writeNeoPixelByte(green);
+    writeNeoPixelByte(red);
+    writeNeoPixelByte(blue);
+  }
+
+  void runNeoPixelSmokeTest() {
+    pinMode(kNeoPixelPin, OUTPUT);
+    digitalWrite(kNeoPixelPin, LOW);
+    writeNeoPixelColor(2, 2, 2);
+    delayMicroseconds(50);
+  }
 }
 
 void setup() {
@@ -22,6 +48,7 @@ void setup() {
   }
 
   pinMode(kButtonPin, INPUT_PULLUP);
+  runNeoPixelSmokeTest();
 
   for (const char* line : kBootBanner) {
     Serial.println(line);

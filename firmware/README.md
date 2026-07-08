@@ -94,4 +94,6 @@ The current skeleton includes a temporary button smoke test on GPIO42 using the 
 - Input mode: INPUT_PULLUP
 - Active state: pressed is active LOW
 
-This is a temporary hardware smoke test only; no NeoPixel, ToF, OLED, LoRa, NVS, or calibration behavior is added yet.
+A temporary one-pixel NeoPixel smoke test is also enabled on GPIO41 with a dim color for development.
+
+This is a temporary hardware smoke test only; no ToF, OLED, LoRa, NVS, or calibration behavior is added yet.
