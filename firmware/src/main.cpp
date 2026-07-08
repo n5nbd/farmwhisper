@@ -25,12 +25,20 @@ uint8_t colorStep = 0;
 bool lastRawButtonState = HIGH;
 bool tofReady = false;
 
+// Application-facing button state
 uint32_t buttonPressCount = 0;
 unsigned long lastAcceptedButtonPressMs = 0;
 
-// ISR-owned state
+// ISR-owned button state
 volatile uint32_t buttonRawIrqCount = 0;
 volatile bool buttonIrqFlag = false;
+
+// Application-facing ToF state
+bool hasLastValidTof = false;
+uint16_t lastValidTofMm = 0;
+uint32_t tofValidCount = 0;
+uint32_t tofShadyCount = 0;
+uint32_t tofTimeoutCount = 0;
 
 void IRAM_ATTR onButtonInterrupt() {
   buttonRawIrqCount++;
@@ -65,6 +73,18 @@ void setPixelStep(uint8_t step) {
 bool i2cProbe(uint8_t addr) {
   Wire.beginTransmission(addr);
   return Wire.endTransmission() == 0;
+}
+
+const char* formatLastValidTof() {
+  static char buffer[20];
+
+  if (hasLastValidTof) {
+    snprintf(buffer, sizeof(buffer), "%u mm", lastValidTofMm);
+  } else {
+    snprintf(buffer, sizeof(buffer), "none");
+  }
+
+  return buffer;
 }
 
 void scanI2cBusOnce() {
@@ -135,6 +155,7 @@ void setupTof() {
   Serial.println("VL53L1X mode: Long");
   Serial.println("VL53L1X timing budget: 50000 us");
   Serial.println("VL53L1X continuous period: 100 ms");
+  Serial.println("VL53L1X app path: only range-valid samples update lastValidTofMm");
 }
 
 void reportTofIfReady() {
@@ -149,7 +170,11 @@ void reportTofIfReady() {
   uint16_t distanceMm = tof.read(false);
 
   if (tof.timeoutOccurred()) {
-    Serial.println("tof ~=timeout status=timeout");
+    tofTimeoutCount++;
+
+    Serial.printf("tof ~=timeout status=timeout lastValid=%s timeoutCount=%lu\n",
+                  formatLastValidTof(),
+                  static_cast<unsigned long>(tofTimeoutCount));
     return;
   }
 
@@ -159,13 +184,22 @@ void reportTofIfReady() {
   bool rangeValid = tof.ranging_data.range_status == 0;
 
   if (rangeValid) {
-    Serial.printf("tof distance=%u mm status=%s\n",
+    hasLastValidTof = true;
+    lastValidTofMm = distanceMm;
+    tofValidCount++;
+
+    Serial.printf("tof distance=%u mm status=%s validCount=%lu\n",
                   distanceMm,
-                  statusText);
+                  statusText,
+                  static_cast<unsigned long>(tofValidCount));
   } else {
-    Serial.printf("tof ~=%u mm status=%s\n",
+    tofShadyCount++;
+
+    Serial.printf("tof ~=%u mm status=%s lastValid=%s shadyCount=%lu\n",
                   distanceMm,
-                  statusText);
+                  statusText,
+                  formatLastValidTof(),
+                  static_cast<unsigned long>(tofShadyCount));
   }
 }
 
@@ -266,10 +300,14 @@ void loop() {
   if (now - lastHeartbeatMs >= 2000) {
     lastHeartbeatMs = now;
 
-    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s\n",
+    Serial.printf("heartbeat button=%s rawIrq=%lu pressCount=%lu tof=%s lastValid=%s valid=%lu shady=%lu timeout=%lu\n",
                   rawButtonState == LOW ? "PRESSED" : "released",
                   static_cast<unsigned long>(getRawButtonIrqCount()),
                   static_cast<unsigned long>(buttonPressCount),
-                  tofReady ? "ready" : "not-ready");
+                  tofReady ? "ready" : "not-ready",
+                  formatLastValidTof(),
+                  static_cast<unsigned long>(tofValidCount),
+                  static_cast<unsigned long>(tofShadyCount),
+                  static_cast<unsigned long>(tofTimeoutCount));
   }
 }
