@@ -10,6 +10,7 @@ namespace {
     "Display support is optional and disabled by default.",
   };
 
+  constexpr int kButtonPin = FW_BIG_BUTTON_CANDIDATE;
   unsigned long lastHeartbeatMs = 0;
 }
 
@@ -19,6 +20,8 @@ void setup() {
   while (!Serial) {
     delay(10);
   }
+
+  pinMode(kButtonPin, INPUT_PULLUP);
 
   for (const char* line : kBootBanner) {
     Serial.println(line);
@@ -30,5 +33,7 @@ void loop() {
   if (now - lastHeartbeatMs >= 1000) {
     lastHeartbeatMs = now;
     Serial.println("FarmWhisper heartbeat");
+    const bool buttonPressed = (digitalRead(kButtonPin) == LOW);
+    Serial.println(buttonPressed ? "Button: PRESSED" : "Button: released");
   }
 }

@@ -85,3 +85,13 @@ From the `firmware/` directory, use PlatformIO commands once `pio` is installed:
 - Monitor serial output: `pio device monitor`
 
 The firmware boot banner prints over USB serial at 115200 baud.
+
+## Temporary button smoke test
+
+The current skeleton includes a temporary button smoke test on GPIO42 using the candidate big-button pin.
+
+- Wiring: GPIO42 -> button -> GND
+- Input mode: INPUT_PULLUP
+- Active state: pressed is active LOW
+
+This is a temporary hardware smoke test only; no NeoPixel, ToF, OLED, LoRa, NVS, or calibration behavior is added yet.
