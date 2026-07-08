@@ -1,13 +1,12 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_NeoPixel.h>
 #include <VL53L1X.h>
 
 #include "fw_config.h"
 #include "fw_pins.h"
+#include "fw_status_pixel.h"
 #include "fw_types.h"
 
-Adafruit_NeoPixel pixel(1, FWPin::StatusPixel, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
 
 static ComponentStatus componentStatus = ComponentStatus::Booting;
@@ -28,9 +27,6 @@ static bool buttonLongPressReported = false;
 
 static uint8_t pendingShortPresses = 0;
 static uint32_t lastShortPressReleaseMs = 0;
-
-static uint32_t buttonFlashUntilMs = 0;
-static ButtonOverlay buttonOverlay = ButtonOverlay::None;
 
 static bool tofReady = false;
 static bool tofVerboseLogging = false;
@@ -73,73 +69,6 @@ const char *statusText(ComponentStatus status) {
       return "TOF_STABLE";
     default:
       return "UNKNOWN";
-  }
-}
-
-void setPixel(uint8_t r, uint8_t g, uint8_t b) {
-  pixel.setPixelColor(0, pixel.Color(r, g, b));
-  pixel.show();
-}
-
-void updateNeoPixel() {
-  const uint32_t now = millis();
-
-  if (now < buttonFlashUntilMs) {
-    switch (buttonOverlay) {
-      case ButtonOverlay::ShortPress:
-        setPixel(40, 40, 40);  // white
-        return;
-
-      case ButtonOverlay::LongPress:
-        setPixel(0, 40, 40);   // cyan
-        return;
-
-      case ButtonOverlay::DoublePress:
-        setPixel(0, 0, 45);    // blue
-        return;
-
-      case ButtonOverlay::TriplePress:
-        setPixel(45, 0, 45);   // magenta
-        return;
-
-      case ButtonOverlay::None:
-        break;
-    }
-  } else {
-    buttonOverlay = ButtonOverlay::None;
-  }
-
-  const bool blinkFast = ((now / 125) % 2) == 0;
-  const bool blinkSlow = ((now / 500) % 2) == 0;
-
-  switch (componentStatus) {
-    case ComponentStatus::Booting:
-      setPixel(0, 0, 30);
-      break;
-
-    case ComponentStatus::TofInitFailed:
-      setPixel(blinkFast ? 45 : 0, 0, 0);
-      break;
-
-    case ComponentStatus::TofTimeout:
-      setPixel(blinkSlow ? 45 : 0, 0, 0);
-      break;
-
-    case ComponentStatus::TofShady:
-      setPixel(blinkFast ? 35 : 0, 0, blinkFast ? 35 : 0);
-      break;
-
-    case ComponentStatus::TofWarming:
-      setPixel(0, 0, blinkSlow ? 35 : 8);
-      break;
-
-    case ComponentStatus::TofUnstable:
-      setPixel(blinkSlow ? 35 : 6, blinkSlow ? 20 : 3, 0);
-      break;
-
-    case ComponentStatus::TofStable:
-      setPixel(0, 35, 0);
-      break;
   }
 }
 
@@ -238,11 +167,6 @@ void printStabilitySummary() {
   Serial.print(spanMm);
 }
 
-void triggerButtonOverlay(ButtonOverlay overlay, uint32_t durationMs) {
-  buttonOverlay = overlay;
-  buttonFlashUntilMs = millis() + durationMs;
-}
-
 void printButtonEventCounters() {
   Serial.print(" pressCount=");
   Serial.print(pressCount);
@@ -260,7 +184,7 @@ void printButtonEventCounters() {
 
 void fireDoublePressEvent() {
   doublePressCount++;
-  triggerButtonOverlay(ButtonOverlay::DoublePress, FWConfig::ButtonMultiFlashMs);
+  FWStatusPixel::triggerButtonOverlay(ButtonOverlay::DoublePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] doublePress");
   printButtonEventCounters();
@@ -269,7 +193,7 @@ void fireDoublePressEvent() {
 
 void fireTriplePressEvent() {
   triplePressCount++;
-  triggerButtonOverlay(ButtonOverlay::TriplePress, FWConfig::ButtonMultiFlashMs);
+  FWStatusPixel::triggerButtonOverlay(ButtonOverlay::TriplePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] triplePress");
   printButtonEventCounters();
@@ -327,7 +251,7 @@ void updateButton() {
       pressCount++;
       buttonPressedAtMs = now;
       buttonLongPressReported = false;
-      triggerButtonOverlay(ButtonOverlay::ShortPress, FWConfig::ButtonShortFlashMs);
+      FWStatusPixel::triggerButtonOverlay(ButtonOverlay::ShortPress, FWConfig::ButtonShortFlashMs);
 
       printButtonEventCounters();
     } else if (previousDebouncedButton == LOW) {
@@ -364,7 +288,7 @@ void updateButton() {
       buttonLongPressReported = true;
       longPressCount++;
       pendingShortPresses = 0;
-      triggerButtonOverlay(ButtonOverlay::LongPress, FWConfig::ButtonLongFlashMs);
+      FWStatusPixel::triggerButtonOverlay(ButtonOverlay::LongPress, FWConfig::ButtonLongFlashMs);
 
       Serial.print("[button] longPress heldMs=");
       Serial.print(heldMs);
@@ -588,8 +512,7 @@ void resetRuntimeDiagnostics() {
   stabilityCount = 0;
   stabilityWriteIndex = 0;
 
-  buttonOverlay = ButtonOverlay::None;
-  buttonFlashUntilMs = 0;
+  FWStatusPixel::clearButtonOverlay();
 
   if (tofReady) {
     componentStatus = ComponentStatus::TofWarming;
@@ -685,9 +608,7 @@ void setup() {
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 
-  pixel.begin();
-  pixel.setBrightness(40);
-  setPixel(0, 0, 30);
+  FWStatusPixel::begin();
 
   pinMode(FWPin::BigButton, INPUT_PULLUP);
   pinMode(FWPin::SpareGpio37, INPUT_PULLUP);
@@ -737,6 +658,6 @@ void loop() {
   handleSerialCommands();
   updateButton();
   pollTof();
-  updateNeoPixel();
+  FWStatusPixel::update(componentStatus);
   printHeartbeat();
 }
