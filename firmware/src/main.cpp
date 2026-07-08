@@ -5,6 +5,7 @@
 #include "fw_button.h"
 #include "fw_config.h"
 #include "fw_pins.h"
+#include "fw_product_i2c.h"
 #include "fw_status_pixel.h"
 #include "fw_types.h"
 
@@ -46,44 +47,6 @@ const char *statusText(ComponentStatus status) {
     default:
       return "UNKNOWN";
   }
-}
-
-bool scanProductI2cFor(uint8_t expectedAddr) {
-  Serial.println();
-  Serial.println("[i2c] Scanning product I2C bus GPIO45 SDA / GPIO46 SCL");
-
-  bool foundExpected = false;
-  uint8_t foundCount = 0;
-
-  for (uint8_t addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    const uint8_t error = Wire.endTransmission();
-
-    if (error == 0) {
-      foundCount++;
-      Serial.print("[i2c] Found device at 0x");
-      if (addr < 16) {
-        Serial.print('0');
-      }
-      Serial.println(addr, HEX);
-
-      if (addr == expectedAddr) {
-        foundExpected = true;
-      }
-    }
-  }
-
-  Serial.print("[i2c] Scan complete, devices=");
-  Serial.print(foundCount);
-  Serial.print(", expected 0x");
-  if (expectedAddr < 16) {
-    Serial.print('0');
-  }
-  Serial.print(expectedAddr, HEX);
-  Serial.print(" present=");
-  Serial.println(foundExpected ? "yes" : "no");
-
-  return foundExpected;
 }
 
 void addValidStabilitySample(uint16_t mm) {
@@ -371,7 +334,7 @@ void processSerialCommand(char command) {
 
     case 'i':
     case 'I':
-      scanProductI2cFor(0x29);
+      FWProductI2C::scanFor(0x29);
       break;
 
     case 'g':
@@ -451,7 +414,7 @@ void setup() {
   Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
   Wire.setClock(400000);
 
-  const bool foundTof = scanProductI2cFor(0x29);
+  const bool foundTof = FWProductI2C::scanFor(0x29);
 
   Serial.println();
   Serial.println("[tof] Initializing VL53L1X");
