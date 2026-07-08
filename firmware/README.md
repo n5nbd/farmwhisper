@@ -59,5 +59,16 @@ The firmware for FarmWhisper nodes should be structured around a modular archite
 
 ## Notes
 
-- This pass is documentation-only.
-- Firmware source code and PlatformIO files will be added in a later pass.
+- This pass adds the initial firmware skeleton and documentation.
+- Firmware source code and PlatformIO files have been added to support the first build cycle, but no hardware-specific features are implemented yet.
+- The current PlatformIO target board is assumed to be `esp32-s3-devkitc-1` for Heltec WiFi LoRa 32 V4. Update `firmware/platformio.ini` when the exact Heltec board ID is confirmed.
+
+## Build / upload / monitor
+
+From the `firmware/` directory, use PlatformIO commands once `pio` is installed:
+
+- Build: `pio run`
+- Upload: `pio run --target upload`
+- Monitor serial output: `pio device monitor`
+
+The firmware boot banner prints over USB serial at 115200 baud.
