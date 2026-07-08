@@ -23,8 +23,11 @@ static constexpr uint32_t SERIAL_BAUD = 115200;
 
 static constexpr uint32_t BUTTON_DEBOUNCE_MS = 35;
 static constexpr uint32_t BUTTON_LONG_PRESS_MS = 1200;
+static constexpr uint32_t BUTTON_MULTI_PRESS_GAP_MS = 450;
+
 static constexpr uint32_t BUTTON_SHORT_FLASH_MS = 150;
 static constexpr uint32_t BUTTON_LONG_FLASH_MS = 450;
+static constexpr uint32_t BUTTON_MULTI_FLASH_MS = 350;
 
 static constexpr uint32_t HEARTBEAT_MS = 1000;
 static constexpr uint32_t TOF_POLL_MS = 100;
@@ -45,6 +48,14 @@ enum class ComponentStatus {
   TofStable
 };
 
+enum class ButtonOverlay {
+  None,
+  ShortPress,
+  LongPress,
+  DoublePress,
+  TriplePress
+};
+
 static ComponentStatus componentStatus = ComponentStatus::Booting;
 
 volatile uint32_t rawButtonIrqCount = 0;
@@ -55,11 +66,17 @@ static uint32_t rawButtonChangedAtMs = 0;
 
 static uint32_t pressCount = 0;
 static uint32_t longPressCount = 0;
+static uint32_t doublePressCount = 0;
+static uint32_t triplePressCount = 0;
+
 static uint32_t buttonPressedAtMs = 0;
 static bool buttonLongPressReported = false;
 
+static uint8_t pendingShortPresses = 0;
+static uint32_t lastShortPressReleaseMs = 0;
+
 static uint32_t buttonFlashUntilMs = 0;
-static bool buttonFlashIsLong = false;
+static ButtonOverlay buttonOverlay = ButtonOverlay::None;
 
 static bool tofReady = false;
 static uint32_t tofValidCount = 0;
@@ -112,16 +129,29 @@ void setPixel(uint8_t r, uint8_t g, uint8_t b) {
 void updateNeoPixel() {
   const uint32_t now = millis();
 
-  // Button event overlay:
-  // short press = white flash
-  // long press = cyan flash
   if (now < buttonFlashUntilMs) {
-    if (buttonFlashIsLong) {
-      setPixel(0, 40, 40);
-    } else {
-      setPixel(40, 40, 40);
+    switch (buttonOverlay) {
+      case ButtonOverlay::ShortPress:
+        setPixel(40, 40, 40);  // white
+        return;
+
+      case ButtonOverlay::LongPress:
+        setPixel(0, 40, 40);   // cyan
+        return;
+
+      case ButtonOverlay::DoublePress:
+        setPixel(0, 0, 45);    // blue
+        return;
+
+      case ButtonOverlay::TriplePress:
+        setPixel(45, 0, 45);   // magenta
+        return;
+
+      case ButtonOverlay::None:
+        break;
     }
-    return;
+  } else {
+    buttonOverlay = ButtonOverlay::None;
   }
 
   const bool blinkFast = ((now / 125) % 2) == 0;
@@ -253,9 +283,68 @@ void printStabilitySummary() {
   Serial.print(spanMm);
 }
 
-void triggerButtonFlash(bool isLongPress) {
-  buttonFlashIsLong = isLongPress;
-  buttonFlashUntilMs = millis() + (isLongPress ? BUTTON_LONG_FLASH_MS : BUTTON_SHORT_FLASH_MS);
+void triggerButtonOverlay(ButtonOverlay overlay, uint32_t durationMs) {
+  buttonOverlay = overlay;
+  buttonFlashUntilMs = millis() + durationMs;
+}
+
+void printButtonEventCounters() {
+  Serial.print(" pressCount=");
+  Serial.print(pressCount);
+  Serial.print(" longPressCount=");
+  Serial.print(longPressCount);
+  Serial.print(" doublePressCount=");
+  Serial.print(doublePressCount);
+  Serial.print(" triplePressCount=");
+  Serial.print(triplePressCount);
+  Serial.print(" pendingShortPresses=");
+  Serial.print(pendingShortPresses);
+  Serial.print(" rawIrqCount=");
+  Serial.print(rawButtonIrqCount);
+}
+
+void fireDoublePressEvent() {
+  doublePressCount++;
+  triggerButtonOverlay(ButtonOverlay::DoublePress, BUTTON_MULTI_FLASH_MS);
+
+  Serial.print("[button] doublePress");
+  printButtonEventCounters();
+  Serial.println();
+}
+
+void fireTriplePressEvent() {
+  triplePressCount++;
+  triggerButtonOverlay(ButtonOverlay::TriplePress, BUTTON_MULTI_FLASH_MS);
+
+  Serial.print("[button] triplePress");
+  printButtonEventCounters();
+  Serial.println();
+}
+
+void finishPendingShortPressSequenceIfReady(uint32_t now) {
+  if (debouncedButton == LOW) {
+    return;
+  }
+
+  if (pendingShortPresses == 0) {
+    return;
+  }
+
+  if ((now - lastShortPressReleaseMs) < BUTTON_MULTI_PRESS_GAP_MS) {
+    return;
+  }
+
+  if (pendingShortPresses == 2) {
+    fireDoublePressEvent();
+  } else if (pendingShortPresses == 1) {
+    Serial.print("[button] singleShortPressSequence");
+    printButtonEventCounters();
+    Serial.println();
+  } else if (pendingShortPresses >= 3) {
+    fireTriplePressEvent();
+  }
+
+  pendingShortPresses = 0;
 }
 
 void updateButton() {
@@ -283,10 +372,9 @@ void updateButton() {
       pressCount++;
       buttonPressedAtMs = now;
       buttonLongPressReported = false;
-      triggerButtonFlash(false);
+      triggerButtonOverlay(ButtonOverlay::ShortPress, BUTTON_SHORT_FLASH_MS);
 
-      Serial.print(" pressCount=");
-      Serial.print(pressCount);
+      printButtonEventCounters();
     } else if (previousDebouncedButton == LOW) {
       const uint32_t heldMs = now - buttonPressedAtMs;
 
@@ -294,12 +382,24 @@ void updateButton() {
       Serial.print(heldMs);
       Serial.print(" longPressSeen=");
       Serial.print(buttonLongPressReported ? "yes" : "no");
+
+      if (!buttonLongPressReported) {
+        pendingShortPresses++;
+        lastShortPressReleaseMs = now;
+
+        if (pendingShortPresses >= 3) {
+          fireTriplePressEvent();
+          pendingShortPresses = 0;
+        } else {
+          printButtonEventCounters();
+        }
+      } else {
+        pendingShortPresses = 0;
+        printButtonEventCounters();
+      }
     }
 
-    Serial.print(" longPressCount=");
-    Serial.print(longPressCount);
-    Serial.print(" rawIrqCount=");
-    Serial.println(rawButtonIrqCount);
+    Serial.println();
   }
 
   if (debouncedButton == LOW && !buttonLongPressReported) {
@@ -308,18 +408,17 @@ void updateButton() {
     if (heldMs >= BUTTON_LONG_PRESS_MS) {
       buttonLongPressReported = true;
       longPressCount++;
-      triggerButtonFlash(true);
+      pendingShortPresses = 0;
+      triggerButtonOverlay(ButtonOverlay::LongPress, BUTTON_LONG_FLASH_MS);
 
       Serial.print("[button] longPress heldMs=");
       Serial.print(heldMs);
-      Serial.print(" longPressCount=");
-      Serial.print(longPressCount);
-      Serial.print(" pressCount=");
-      Serial.print(pressCount);
-      Serial.print(" rawIrqCount=");
-      Serial.println(rawButtonIrqCount);
+      printButtonEventCounters();
+      Serial.println();
     }
   }
+
+  finishPendingShortPressSequenceIfReady(now);
 }
 
 void pollTof() {
@@ -429,6 +528,12 @@ void printHeartbeat() {
   Serial.print(pressCount);
   Serial.print(" longPressCount=");
   Serial.print(longPressCount);
+  Serial.print(" doublePressCount=");
+  Serial.print(doublePressCount);
+  Serial.print(" triplePressCount=");
+  Serial.print(triplePressCount);
+  Serial.print(" pendingShortPresses=");
+  Serial.print(pendingShortPresses);
   Serial.print(" tofValid=");
   Serial.print(tofValidCount);
   Serial.print(" tofShady=");
@@ -464,7 +569,8 @@ void setup() {
   Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
   Serial.println("[boot] USB CDC serial enabled");
   Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
-  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app event + long press diagnostic");
+  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
+  Serial.println("[boot] Button events: short press, long press, double press, triple press");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
