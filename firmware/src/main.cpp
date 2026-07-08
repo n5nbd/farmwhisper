@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <VL53L1X.h>
 
+#include "fw_button.h"
 #include "fw_config.h"
 #include "fw_pins.h"
 #include "fw_status_pixel.h"
@@ -10,23 +11,6 @@
 VL53L1X tof;
 
 static ComponentStatus componentStatus = ComponentStatus::Booting;
-
-volatile uint32_t rawButtonIrqCount = 0;
-
-static bool lastRawButton = HIGH;
-static bool debouncedButton = HIGH;
-static uint32_t rawButtonChangedAtMs = 0;
-
-static uint32_t pressCount = 0;
-static uint32_t longPressCount = 0;
-static uint32_t doublePressCount = 0;
-static uint32_t triplePressCount = 0;
-
-static uint32_t buttonPressedAtMs = 0;
-static bool buttonLongPressReported = false;
-
-static uint8_t pendingShortPresses = 0;
-static uint32_t lastShortPressReleaseMs = 0;
 
 static bool tofReady = false;
 static bool tofVerboseLogging = false;
@@ -42,14 +26,6 @@ static uint8_t stabilityWriteIndex = 0;
 
 static uint32_t lastHeartbeatMs = 0;
 static uint32_t lastTofPollMs = 0;
-
-void IRAM_ATTR onButtonFalling() {
-  rawButtonIrqCount++;
-}
-
-const char *buttonText(bool value) {
-  return value == LOW ? "LOW/pressed" : "HIGH/released";
-}
 
 const char *statusText(ComponentStatus status) {
   switch (status) {
@@ -167,139 +143,6 @@ void printStabilitySummary() {
   Serial.print(spanMm);
 }
 
-void printButtonEventCounters() {
-  Serial.print(" pressCount=");
-  Serial.print(pressCount);
-  Serial.print(" longPressCount=");
-  Serial.print(longPressCount);
-  Serial.print(" doublePressCount=");
-  Serial.print(doublePressCount);
-  Serial.print(" triplePressCount=");
-  Serial.print(triplePressCount);
-  Serial.print(" pendingShortPresses=");
-  Serial.print(pendingShortPresses);
-  Serial.print(" rawIrqCount=");
-  Serial.print(rawButtonIrqCount);
-}
-
-void fireDoublePressEvent() {
-  doublePressCount++;
-  FWStatusPixel::triggerButtonOverlay(ButtonOverlay::DoublePress, FWConfig::ButtonMultiFlashMs);
-
-  Serial.print("[button] doublePress");
-  printButtonEventCounters();
-  Serial.println();
-}
-
-void fireTriplePressEvent() {
-  triplePressCount++;
-  FWStatusPixel::triggerButtonOverlay(ButtonOverlay::TriplePress, FWConfig::ButtonMultiFlashMs);
-
-  Serial.print("[button] triplePress");
-  printButtonEventCounters();
-  Serial.println();
-}
-
-void finishPendingShortPressSequenceIfReady(uint32_t now) {
-  if (debouncedButton == LOW) {
-    return;
-  }
-
-  if (pendingShortPresses == 0) {
-    return;
-  }
-
-  if ((now - lastShortPressReleaseMs) < FWConfig::ButtonMultiPressGapMs) {
-    return;
-  }
-
-  if (pendingShortPresses == 2) {
-    fireDoublePressEvent();
-  } else if (pendingShortPresses == 1) {
-    Serial.print("[button] singleShortPressSequence");
-    printButtonEventCounters();
-    Serial.println();
-  } else if (pendingShortPresses >= 3) {
-    fireTriplePressEvent();
-  }
-
-  pendingShortPresses = 0;
-}
-
-void updateButton() {
-  const uint32_t now = millis();
-  const bool rawButton = digitalRead(FWPin::BigButton);
-
-  if (rawButton != lastRawButton) {
-    lastRawButton = rawButton;
-    rawButtonChangedAtMs = now;
-
-    Serial.print("[button] raw=");
-    Serial.print(buttonText(rawButton));
-    Serial.print(" rawIrqCount=");
-    Serial.println(rawButtonIrqCount);
-  }
-
-  if ((now - rawButtonChangedAtMs) >= FWConfig::ButtonDebounceMs && rawButton != debouncedButton) {
-    const bool previousDebouncedButton = debouncedButton;
-    debouncedButton = rawButton;
-
-    Serial.print("[button] debounced=");
-    Serial.print(buttonText(debouncedButton));
-
-    if (debouncedButton == LOW) {
-      pressCount++;
-      buttonPressedAtMs = now;
-      buttonLongPressReported = false;
-      FWStatusPixel::triggerButtonOverlay(ButtonOverlay::ShortPress, FWConfig::ButtonShortFlashMs);
-
-      printButtonEventCounters();
-    } else if (previousDebouncedButton == LOW) {
-      const uint32_t heldMs = now - buttonPressedAtMs;
-
-      Serial.print(" heldMs=");
-      Serial.print(heldMs);
-      Serial.print(" longPressSeen=");
-      Serial.print(buttonLongPressReported ? "yes" : "no");
-
-      if (!buttonLongPressReported) {
-        pendingShortPresses++;
-        lastShortPressReleaseMs = now;
-
-        if (pendingShortPresses >= 3) {
-          fireTriplePressEvent();
-          pendingShortPresses = 0;
-        } else {
-          printButtonEventCounters();
-        }
-      } else {
-        pendingShortPresses = 0;
-        printButtonEventCounters();
-      }
-    }
-
-    Serial.println();
-  }
-
-  if (debouncedButton == LOW && !buttonLongPressReported) {
-    const uint32_t heldMs = now - buttonPressedAtMs;
-
-    if (heldMs >= FWConfig::ButtonLongPressMs) {
-      buttonLongPressReported = true;
-      longPressCount++;
-      pendingShortPresses = 0;
-      FWStatusPixel::triggerButtonOverlay(ButtonOverlay::LongPress, FWConfig::ButtonLongFlashMs);
-
-      Serial.print("[button] longPress heldMs=");
-      Serial.print(heldMs);
-      printButtonEventCounters();
-      Serial.println();
-    }
-  }
-
-  finishPendingShortPressSequenceIfReady(now);
-}
-
 void pollTof() {
   if (!tofReady) {
     componentStatus = ComponentStatus::TofInitFailed;
@@ -403,9 +246,9 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(" status=");
   Serial.print(statusText(componentStatus));
   Serial.print(" rawButton=");
-  Serial.print(buttonText(digitalRead(FWPin::BigButton)));
+  Serial.print(FWButton::buttonText(digitalRead(FWPin::BigButton)));
   Serial.print(" rawIrqCount=");
-  Serial.print(rawButtonIrqCount);
+  Serial.print(FWButton::rawIrqCount());
   Serial.print(" gpio37=");
   Serial.print(digitalRead(FWPin::SpareGpio37) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio38=");
@@ -414,16 +257,16 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(digitalRead(FWPin::ExpansionGpio39) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio40=");
   Serial.print(digitalRead(FWPin::ExpansionGpio40) == LOW ? "LOW/grounded" : "HIGH/open");
-  Serial.print(" pressCount=");
-  Serial.print(pressCount);
-  Serial.print(" longPressCount=");
-  Serial.print(longPressCount);
-  Serial.print(" doublePressCount=");
-  Serial.print(doublePressCount);
-  Serial.print(" triplePressCount=");
-  Serial.print(triplePressCount);
-  Serial.print(" pendingShortPresses=");
-  Serial.print(pendingShortPresses);
+  Serial.print(" FWButton::pressCount()=");
+  Serial.print(FWButton::pressCount());
+  Serial.print(" FWButton::longPressCount()=");
+  Serial.print(FWButton::longPressCount());
+  Serial.print(" FWButton::doublePressCount()=");
+  Serial.print(FWButton::doublePressCount());
+  Serial.print(" FWButton::triplePressCount()=");
+  Serial.print(FWButton::triplePressCount());
+  Serial.print(" FWButton::pendingShortPresses()=");
+  Serial.print(FWButton::pendingShortPresses());
   Serial.print(" tofReady=");
   Serial.print(tofReady ? "yes" : "no");
   Serial.print(" tofVerbose=");
@@ -487,18 +330,7 @@ void printSerialHelp() {
 }
 
 void resetRuntimeDiagnostics() {
-  noInterrupts();
-  rawButtonIrqCount = 0;
-  interrupts();
-
-  pressCount = 0;
-  longPressCount = 0;
-  doublePressCount = 0;
-  triplePressCount = 0;
-
-  pendingShortPresses = 0;
-  lastShortPressReleaseMs = 0;
-  buttonLongPressReported = false;
+  FWButton::resetDiagnostics();
 
   tofValidCount = 0;
   tofShadyCount = 0;
@@ -610,16 +442,11 @@ void setup() {
 
   FWStatusPixel::begin();
 
-  pinMode(FWPin::BigButton, INPUT_PULLUP);
+  FWButton::begin();
   pinMode(FWPin::SpareGpio37, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio38, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio39, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio40, INPUT_PULLUP);
-  lastRawButton = digitalRead(FWPin::BigButton);
-  debouncedButton = lastRawButton;
-  rawButtonChangedAtMs = millis();
-
-  attachInterrupt(digitalPinToInterrupt(FWPin::BigButton), onButtonFalling, FALLING);
 
   Wire.begin(FWPin::ProductI2cSda, FWPin::ProductI2cScl);
   Wire.setClock(400000);
@@ -656,7 +483,7 @@ void setup() {
 
 void loop() {
   handleSerialCommands();
-  updateButton();
+  FWButton::update();
   pollTof();
   FWStatusPixel::update(componentStatus);
   printHeartbeat();
