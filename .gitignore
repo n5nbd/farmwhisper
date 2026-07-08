@@ -1,0 +1,25 @@
+# build outputs
+.pio/
+build/
+dist/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+
+# 3D print/generated exports
+*.stl
+*.3mf
+*.gcode
+
+# editor/system junk
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# local secrets/config
+.env
+secrets.*
+local.*
