@@ -1,86 +1,178 @@
 #include <Arduino.h>
+#include <Wire.h>
 #include <Adafruit_NeoPixel.h>
 
-#include "fw_config.h"
-#include "fw_pins.h"
+static constexpr int PIN_I2C_SDA = 45;
+static constexpr int PIN_I2C_SCL = 46;
 
-namespace {
-  const char* kBootBanner[] = {
-    "",
-    "FarmWhisper firmware booting...",
-    "Board: Heltec WiFi LoRa 32 V4 (ESP32-S3 class, assumed esp32-s3-devkitc-1 target)",
-    "Display support is optional and disabled by default.",
-  };
+static constexpr int PIN_BUTTON = 42;  // active LOW
+static constexpr int PIN_PIXEL  = 41;
 
-  constexpr int kButtonPin = FW_BIG_BUTTON_CANDIDATE;
-  constexpr int kNeoPixelPin = FW_NEOPIXEL_CANDIDATE;
-  constexpr uint16_t kNeoPixelCount = 1;
-  constexpr uint8_t kNeoPixelBrightness = 16;
+static constexpr uint8_t PIXEL_COUNT = 1;
+static constexpr uint8_t VL53L1X_ADDR = 0x29;
 
-  Adafruit_NeoPixel pixel(kNeoPixelCount, kNeoPixelPin, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixel(PIXEL_COUNT, PIN_PIXEL, NEO_GRB + NEO_KHZ800);
 
-  unsigned long lastHeartbeatMs = 0;
-  uint8_t currentNeoPixelIndex = 0;
+unsigned long lastPixelMs = 0;
+unsigned long lastHeartbeatMs = 0;
+unsigned long lastScanMs = 0;
 
-  struct NeoPixelColor {
-    const char* name;
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-  };
+uint8_t colorStep = 0;
+bool lastButtonState = HIGH;
 
-  const NeoPixelColor kNeoPixelColors[] = {
-    {"red", 255, 0, 0},
-    {"green", 0, 255, 0},
-    {"blue", 0, 0, 255},
-    {"off", 0, 0, 0},
-  };
+// ISR-owned state
+volatile uint32_t buttonIrqCount = 0;
+volatile bool buttonIrqFlag = false;
 
-  void showNeoPixelColor() {
-    const NeoPixelColor& color = kNeoPixelColors[currentNeoPixelIndex];
-    pixel.setPixelColor(0, pixel.Color(color.red, color.green, color.blue));
-    pixel.show();
+void IRAM_ATTR onButtonInterrupt() {
+  buttonIrqCount++;
+  buttonIrqFlag = true;
+}
+
+void setPixelStep(uint8_t step) {
+  switch (step % 6) {
+    case 0:
+      pixel.setPixelColor(0, pixel.Color(24, 0, 0));    // red
+      break;
+    case 1:
+      pixel.setPixelColor(0, pixel.Color(0, 24, 0));    // green
+      break;
+    case 2:
+      pixel.setPixelColor(0, pixel.Color(0, 0, 24));    // blue
+      break;
+    case 3:
+      pixel.setPixelColor(0, pixel.Color(24, 12, 0));   // amber
+      break;
+    case 4:
+      pixel.setPixelColor(0, pixel.Color(0, 24, 24));   // cyan
+      break;
+    default:
+      pixel.setPixelColor(0, pixel.Color(24, 0, 24));   // magenta
+      break;
   }
 
-  void advanceNeoPixelSmokeTest() {
-    currentNeoPixelIndex =
-      (currentNeoPixelIndex + 1) % (sizeof(kNeoPixelColors) / sizeof(kNeoPixelColors[0]));
-    showNeoPixelColor();
+  pixel.show();
+}
+
+bool i2cProbe(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
+
+void scanI2cBus() {
+  Serial.println();
+  Serial.println("I2C scan on product bus SDA=GPIO45 SCL=GPIO46");
+
+  uint8_t found = 0;
+
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    uint8_t err = Wire.endTransmission();
+
+    if (err == 0) {
+      Serial.printf("  found 0x%02X", addr);
+
+      if (addr == VL53L1X_ADDR) {
+        Serial.print("  <- VL53L1X default address");
+      }
+
+      Serial.println();
+      found++;
+    }
+  }
+
+  if (found == 0) {
+    Serial.println("  no I2C devices found");
+  }
+
+  if (i2cProbe(VL53L1X_ADDR)) {
+    Serial.println("VL53L1X presence: PASS");
+  } else {
+    Serial.println("VL53L1X presence: FAIL / not seen at 0x29");
   }
 }
 
 void setup() {
-  delay(500);
-  Serial.begin(115200);
-  while (!Serial) {
-    delay(10);
-  }
+  delay(1500);
 
-  pinMode(kButtonPin, INPUT_PULLUP);
+  Serial.begin(115200);
+  delay(500);
+
+  Serial.println();
+  Serial.println("===== FarmWhisper product I2C smoke test =====");
+
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), onButtonInterrupt, FALLING);
 
   pixel.begin();
-  pixel.setBrightness(kNeoPixelBrightness);
   pixel.clear();
-  showNeoPixelColor();
+  pixel.setBrightness(32);
+  setPixelStep(0);
 
-  for (const char* line : kBootBanner) {
-    Serial.println(line);
-  }
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.setClock(100000);
+
+  Serial.println("GPIO42 button active LOW");
+  Serial.println("GPIO42 interrupt attached on FALLING edge");
+  Serial.println("GPIO41 NeoPixel color cycle enabled");
+  Serial.println("Product I2C: SDA GPIO45, SCL GPIO46");
+
+  scanI2cBus();
 }
 
 void loop() {
   const unsigned long now = millis();
-  if (now - lastHeartbeatMs >= 1000) {
+
+  // Normal polling path preserved.
+  bool buttonState = digitalRead(PIN_BUTTON);
+
+  if (buttonState != lastButtonState) {
+    lastButtonState = buttonState;
+    Serial.printf("button poll=%s\n", buttonState == LOW ? "PRESSED" : "released");
+  }
+
+  // Interrupt path preserved.
+  static uint32_t lastReportedIrqCount = 0;
+  static unsigned long lastAcceptedPressMs = 0;
+
+  if (buttonIrqFlag) {
+    noInterrupts();
+    uint32_t irqCountSnapshot = buttonIrqCount;
+    buttonIrqFlag = false;
+    interrupts();
+
+    if (irqCountSnapshot != lastReportedIrqCount && now - lastAcceptedPressMs > 50) {
+      lastReportedIrqCount = irqCountSnapshot;
+      lastAcceptedPressMs = now;
+
+      Serial.printf("button interrupt press irqCount=%lu\n",
+                    static_cast<unsigned long>(irqCountSnapshot));
+    }
+  }
+
+  // NeoPixel heartbeat / color cycle.
+  if (now - lastPixelMs >= 500) {
+    lastPixelMs = now;
+    setPixelStep(colorStep++);
+  }
+
+  // Serial heartbeat.
+  if (now - lastHeartbeatMs >= 2000) {
     lastHeartbeatMs = now;
 
-    const bool buttonPressed = (digitalRead(kButtonPin) == LOW);
-    const NeoPixelColor& color = kNeoPixelColors[currentNeoPixelIndex];
+    uint32_t irqCountSnapshot;
+    noInterrupts();
+    irqCountSnapshot = buttonIrqCount;
+    interrupts();
 
-    Serial.print("FarmWhisper heartbeat button=");
-    Serial.print(buttonPressed ? "PRESSED" : "released");
-    Serial.print(" pixel=");
-    Serial.println(color.name);
+    Serial.printf("heartbeat button=%s irqCount=%lu\n",
+                  buttonState == LOW ? "PRESSED" : "released",
+                  static_cast<unsigned long>(irqCountSnapshot));
+  }
 
-    advanceNeoPixelSmokeTest();
+  // I2C scan every 5 seconds.
+  if (now - lastScanMs >= 5000) {
+    lastScanMs = now;
+    scanI2cBus();
   }
 }
