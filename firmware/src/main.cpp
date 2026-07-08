@@ -22,6 +22,10 @@ static constexpr uint8_t FW_PIN_NEOPIXEL = 41;
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
 static constexpr uint32_t BUTTON_DEBOUNCE_MS = 35;
+static constexpr uint32_t BUTTON_LONG_PRESS_MS = 1200;
+static constexpr uint32_t BUTTON_SHORT_FLASH_MS = 150;
+static constexpr uint32_t BUTTON_LONG_FLASH_MS = 450;
+
 static constexpr uint32_t HEARTBEAT_MS = 1000;
 static constexpr uint32_t TOF_POLL_MS = 100;
 
@@ -48,8 +52,14 @@ volatile uint32_t rawButtonIrqCount = 0;
 static bool lastRawButton = HIGH;
 static bool debouncedButton = HIGH;
 static uint32_t rawButtonChangedAtMs = 0;
+
 static uint32_t pressCount = 0;
+static uint32_t longPressCount = 0;
+static uint32_t buttonPressedAtMs = 0;
+static bool buttonLongPressReported = false;
+
 static uint32_t buttonFlashUntilMs = 0;
+static bool buttonFlashIsLong = false;
 
 static bool tofReady = false;
 static uint32_t tofValidCount = 0;
@@ -102,9 +112,15 @@ void setPixel(uint8_t r, uint8_t g, uint8_t b) {
 void updateNeoPixel() {
   const uint32_t now = millis();
 
-  // Button press is a short white overlay on top of component status.
+  // Button event overlay:
+  // short press = white flash
+  // long press = cyan flash
   if (now < buttonFlashUntilMs) {
-    setPixel(40, 40, 40);
+    if (buttonFlashIsLong) {
+      setPixel(0, 40, 40);
+    } else {
+      setPixel(40, 40, 40);
+    }
     return;
   }
 
@@ -237,6 +253,11 @@ void printStabilitySummary() {
   Serial.print(spanMm);
 }
 
+void triggerButtonFlash(bool isLongPress) {
+  buttonFlashIsLong = isLongPress;
+  buttonFlashUntilMs = millis() + (isLongPress ? BUTTON_LONG_FLASH_MS : BUTTON_SHORT_FLASH_MS);
+}
+
 void updateButton() {
   const uint32_t now = millis();
   const bool rawButton = digitalRead(PIN_BUTTON);
@@ -252,6 +273,7 @@ void updateButton() {
   }
 
   if ((now - rawButtonChangedAtMs) >= BUTTON_DEBOUNCE_MS && rawButton != debouncedButton) {
+    const bool previousDebouncedButton = debouncedButton;
     debouncedButton = rawButton;
 
     Serial.print("[button] debounced=");
@@ -259,14 +281,44 @@ void updateButton() {
 
     if (debouncedButton == LOW) {
       pressCount++;
-      buttonFlashUntilMs = now + 150;
+      buttonPressedAtMs = now;
+      buttonLongPressReported = false;
+      triggerButtonFlash(false);
 
       Serial.print(" pressCount=");
       Serial.print(pressCount);
+    } else if (previousDebouncedButton == LOW) {
+      const uint32_t heldMs = now - buttonPressedAtMs;
+
+      Serial.print(" heldMs=");
+      Serial.print(heldMs);
+      Serial.print(" longPressSeen=");
+      Serial.print(buttonLongPressReported ? "yes" : "no");
     }
 
+    Serial.print(" longPressCount=");
+    Serial.print(longPressCount);
     Serial.print(" rawIrqCount=");
     Serial.println(rawButtonIrqCount);
+  }
+
+  if (debouncedButton == LOW && !buttonLongPressReported) {
+    const uint32_t heldMs = now - buttonPressedAtMs;
+
+    if (heldMs >= BUTTON_LONG_PRESS_MS) {
+      buttonLongPressReported = true;
+      longPressCount++;
+      triggerButtonFlash(true);
+
+      Serial.print("[button] longPress heldMs=");
+      Serial.print(heldMs);
+      Serial.print(" longPressCount=");
+      Serial.print(longPressCount);
+      Serial.print(" pressCount=");
+      Serial.print(pressCount);
+      Serial.print(" rawIrqCount=");
+      Serial.println(rawButtonIrqCount);
+    }
   }
 }
 
@@ -375,6 +427,8 @@ void printHeartbeat() {
   Serial.print(rawButtonIrqCount);
   Serial.print(" pressCount=");
   Serial.print(pressCount);
+  Serial.print(" longPressCount=");
+  Serial.print(longPressCount);
   Serial.print(" tofValid=");
   Serial.print(tofValidCount);
   Serial.print(" tofShady=");
@@ -410,7 +464,7 @@ void setup() {
   Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
   Serial.println("[boot] USB CDC serial enabled");
   Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
-  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app event");
+  Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app event + long press diagnostic");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
