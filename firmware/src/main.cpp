@@ -4,6 +4,7 @@
 #include <VL53L1X.h>
 
 #include "fw_pins.h"
+#include "fw_types.h"
 
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
@@ -23,24 +24,6 @@ static constexpr uint16_t STABILITY_MAX_SPAN_MM = 25;
 
 Adafruit_NeoPixel pixel(1, FWPin::StatusPixel, NEO_GRB + NEO_KHZ800);
 VL53L1X tof;
-
-enum class ComponentStatus {
-  Booting,
-  TofInitFailed,
-  TofTimeout,
-  TofShady,
-  TofWarming,
-  TofUnstable,
-  TofStable
-};
-
-enum class ButtonOverlay {
-  None,
-  ShortPress,
-  LongPress,
-  DoublePress,
-  TriplePress
-};
 
 static ComponentStatus componentStatus = ComponentStatus::Booting;
 
