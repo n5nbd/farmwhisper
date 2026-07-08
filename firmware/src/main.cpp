@@ -144,13 +144,24 @@ void reportTofIfReady() {
   uint16_t distanceMm = tof.read(false);
 
   if (tof.timeoutOccurred()) {
-    Serial.println("tof timeout");
+    Serial.println("tof ~=timeout status=timeout");
     return;
   }
 
-  Serial.printf("tof distance=%u mm status=%s\n",
-                distanceMm,
-                VL53L1X::rangeStatusToString(tof.ranging_data.range_status));
+  const char* statusText =
+      VL53L1X::rangeStatusToString(tof.ranging_data.range_status);
+
+  bool rangeValid = tof.ranging_data.range_status == 0;
+
+  if (rangeValid) {
+    Serial.printf("tof distance=%u mm status=%s\n",
+                  distanceMm,
+                  statusText);
+  } else {
+    Serial.printf("tof ~=%u mm status=%s\n",
+                  distanceMm,
+                  statusText);
+  }
 }
 
 void setup() {
