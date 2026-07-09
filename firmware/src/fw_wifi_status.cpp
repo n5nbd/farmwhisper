@@ -1,4 +1,5 @@
 #include "fw_wifi_status.h"
+#include "fw_wifi_setup_web.h"
 
 #include <WebServer.h>
 #include <WiFi.h>
@@ -32,94 +33,6 @@ const IPAddress kApSmokeIp(10, 10, 10, 10);
 const IPAddress kApSmokeGateway(10, 10, 10, 10);
 const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
-
-constexpr const char *kSetupCss = R"CSS(
-/*
- * FarmWhisper setup UI theme.
- *
- * Keep the .fw-* class names stable. Future themes should be able to replace
- * this stylesheet and any referenced assets without changing firmware logic or
- * the generated setup-page structure.
- */
-
-:root {
-  color-scheme: light;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-.fw-page {
-  margin: 0;
-  padding: 1rem;
-  color: #000;
-  background: #008080;
-  font-family: Arial, Helvetica, sans-serif;
-  line-height: 1.35;
-}
-
-.fw-window {
-  max-width: 36rem;
-  margin: 0 auto;
-  color: #000;
-  background: #c0c0c0;
-  border-color: #fff #404040 #404040 #fff;
-  border-style: solid;
-  border-width: 2px;
-  box-shadow: 1px 1px 0 #000;
-}
-
-.fw-titlebar {
-  margin: 0;
-  padding: 0.35rem 0.5rem;
-  color: #fff;
-  background: #000080;
-  font-size: 1.15rem;
-  font-weight: 700;
-}
-
-.fw-content {
-  padding: 0.75rem;
-}
-
-.fw-intro,
-.fw-note,
-.fw-actions {
-  margin: 0.75rem 0 0;
-}
-
-.fw-intro {
-  margin-top: 0;
-}
-
-.fw-status-grid {
-  display: grid;
-  grid-template-columns: 11rem 1fr;
-  gap: 0.35rem 0.75rem;
-  margin: 0.75rem 0 0;
-  padding: 0.75rem;
-  background: #fff;
-  border-color: #404040 #fff #fff #404040;
-  border-style: solid;
-  border-width: 2px;
-}
-
-.fw-status-grid dt {
-  font-weight: 700;
-}
-
-.fw-status-grid dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-family: Consolas, "Courier New", monospace;
-}
-
-.fw-link {
-  color: #000080;
-  font-weight: 700;
-}
-)CSS";
 
 WebServer setupServer(80);
 
@@ -233,136 +146,19 @@ uint32_t apSmokeRemainingMs() {
   return kApSmokeTimeoutMs - ageMs;
 }
 
-void handleSetupStatus() {
-  /*
-   * Keep this dependency-free for now. A hand-built JSON response is enough
-   * for route validation and avoids pulling in a JSON library before the setup
-   * model exists.
-   */
-  String body;
-  body.reserve(320);
 
-  body += "{\n";
-  body += "  \"apSmoke\": ";
-  body += apSmokeActive ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupHttp\": ";
-  body += setupHttpActive ? "true" : "false";
-  body += ",\n";
-  body += "  \"deviceId\": \"";
-  body += deviceId;
-  body += "\",\n";
-  body += "  \"ssid\": \"";
-  body += apSmokeSsid;
-  body += "\",\n";
-  body += "  \"ip\": \"";
-  body += WiFi.softAPIP().toString();
-  body += "\",\n";
-  body += "  \"stations\": ";
-  body += static_cast<int>(WiFi.softAPgetStationNum());
-  body += ",\n";
-  body += "  \"ageS\": ";
-  body += apSmokeAgeMs() / 1000UL;
-  body += ",\n";
-  body += "  \"timeoutS\": ";
-  body += kApSmokeTimeoutMs / 1000UL;
-  body += ",\n";
-  body += "  \"remainingS\": ";
-  body += apSmokeRemainingMs() / 1000UL;
-  body += "\n";
-  body += "}\n";
-
-  setupServer.sendHeader("Cache-Control", "no-store");
-  setupServer.send(200, "application/json", body);
-}
-
-String setupRootPageHtml() {
-  /*
-   * Server-render the setup page for now. No JavaScript, no forms, and no
-   * browser-side state are needed until the credential/config model exists.
-   */
-  const uint32_t ageS = apSmokeAgeMs() / 1000UL;
-  const uint32_t remainingS = apSmokeRemainingMs() / 1000UL;
-
-  String body;
-  body.reserve(1800);
-
-  body += "<!doctype html>\n";
-  body += "<html lang=\"en\">\n";
-  body += "<head>\n";
-  body += "  <meta charset=\"utf-8\">\n";
-  body += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
-  body += "  <title>FarmWhisper Setup</title>\n";
-  body += "  <link rel=\"stylesheet\" href=\"/setup.css\">\n";
-  body += "</head>\n";
-  body += "<body class=\"fw-page\">\n";
-  body += "  <main class=\"fw-window\" aria-labelledby=\"fw-title\">\n";
-  body += "    <h1 id=\"fw-title\" class=\"fw-titlebar\">FarmWhisper Setup</h1>\n";
-  body += "    <section class=\"fw-content\">\n";
-  body += "      <p class=\"fw-intro\">WiFi setup server is running.</p>\n";
-  body += "      <dl class=\"fw-status-grid\">\n";
-
-  body += "      <dt>AP smoke/setup</dt><dd>";
-  body += apSmokeActive ? "ON" : "OFF";
-  body += "</dd>\n";
-
-  body += "      <dt>Setup HTTP</dt><dd>";
-  body += setupHttpActive ? "ON" : "OFF";
-  body += "</dd>\n";
-
-  body += "      <dt>Device ID</dt><dd>";
-  body += deviceId;
-  body += "</dd>\n";
-
-  body += "      <dt>SSID</dt><dd>";
-  body += apSmokeSsid;
-  body += "</dd>\n";
-
-  body += "      <dt>IP</dt><dd>";
-  body += WiFi.softAPIP().toString();
-  body += "</dd>\n";
-
-  body += "      <dt>Stations</dt><dd>";
-  body += static_cast<int>(WiFi.softAPgetStationNum());
-  body += "</dd>\n";
-
-  body += "      <dt>Age</dt><dd>";
-  body += ageS;
-  body += " s</dd>\n";
-
-  body += "      <dt>Timeout</dt><dd>";
-  body += kApSmokeTimeoutMs / 1000UL;
-  body += " s</dd>\n";
-
-  body += "      <dt>Remaining</dt><dd>";
-  body += remainingS;
-  body += " s</dd>\n";
-
-  body += "      </dl>\n";
-  body += "      <p class=\"fw-note\">Credential entry is not implemented in this slice.</p>\n";
-  body += "      <p class=\"fw-actions\"><a class=\"fw-link\" href=\"/status\">View setup status JSON</a></p>\n";
-  body += "    </section>\n";
-  body += "  </main>\n";
-  body += "</body>\n";
-  body += "</html>\n";
-
-  return body;
-}
-
-void handleSetupCss() {
-  setupServer.sendHeader("Cache-Control", "no-store");
-  setupServer.send(200, "text/css", kSetupCss);
-}
-
-void handleSetupRoot() {
-  const String body = setupRootPageHtml();
-
-  setupServer.sendHeader("Cache-Control", "no-store");
-  setupServer.send(200, "text/html", body);
-}
-
-void handleSetupNotFound() {
-  setupServer.send(404, "text/plain", "FarmWhisper setup placeholder: not found");
+FWWiFiSetupWeb::SetupStatus currentSetupWebStatus() {
+  return {
+      apSmokeActive,
+      setupHttpActive,
+      deviceId,
+      apSmokeSsid,
+      WiFi.softAPIP(),
+      static_cast<uint8_t>(WiFi.softAPgetStationNum()),
+      apSmokeAgeMs() / 1000UL,
+      kApSmokeTimeoutMs / 1000UL,
+      apSmokeRemainingMs() / 1000UL,
+  };
 }
 
 void startSetupHttpServer(Stream &out) {
@@ -376,10 +172,7 @@ void startSetupHttpServer(Stream &out) {
    * credential forms, NVS writes, or boot-time WiFi behavior.
    */
   if (!setupHttpRoutesConfigured) {
-    setupServer.on("/", HTTP_GET, handleSetupRoot);
-    setupServer.on("/setup.css", HTTP_GET, handleSetupCss);
-    setupServer.on("/status", HTTP_GET, handleSetupStatus);
-    setupServer.onNotFound(handleSetupNotFound);
+    FWWiFiSetupWeb::registerRoutes(setupServer, currentSetupWebStatus);
     setupHttpRoutesConfigured = true;
   }
 

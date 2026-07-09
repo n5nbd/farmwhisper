@@ -98,3 +98,10 @@ The device ID appears in serial WiFi status, the setup root page, and the
 While setup AP/HTTP mode is active, `http://10.10.10.10/setup.css` serves the
 compiled-in stylesheet for the setup root page. This is a presentation-only
 route and does not affect WiFi state or diagnostics.
+
+
+## WiFi setup web module
+
+The WiFi setup web surface is rendered by `fw_wifi_setup_web.{h,cpp}`. Serial
+diagnostic behavior is unchanged; the split only moves page/CSS/status route
+rendering out of the WiFi state module.

@@ -247,3 +247,20 @@ Current semantic CSS hooks:
 Future themes should be swappable by replacing the stylesheet and any
 referenced assets. A new theme should not require changing setup routes, WiFi
 state handling, status JSON, or credential/config logic.
+
+
+## Setup web module split
+
+Setup page rendering and setup HTTP route handlers live in
+`fw_wifi_setup_web.{h,cpp}`.
+
+Responsibilities:
+
+- `fw_wifi_status.cpp`: WiFi radio state, AP lifecycle, setup timeout,
+  MAC-derived identity, scan behavior, and WebServer lifecycle.
+- `fw_wifi_setup_web.cpp`: setup routes, root page rendering, `/setup.css`,
+  `/status`, and the setup UI CSS contract.
+
+The setup web module receives a read-only status snapshot callback from the
+WiFi status module. It must not start/stop WiFi, scan networks, store
+credentials, or perform captive-portal behavior.
