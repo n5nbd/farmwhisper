@@ -503,7 +503,6 @@ String setupRootPageHtml(
   <main class="fw-window">
     <h1 class="fw-titlebar">FarmWhisper Setup</h1>
     <div class="fw-content">
-      <p class="fw-intro">FarmWhisper setup server is running.</p>
 
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
@@ -567,8 +566,6 @@ String setupRootPageHtml(
           </div>
         </div>
       </section>
-
-      <p class="fw-note">This page can update the optional local setup PIN and device alias. Other configuration fields are not implemented yet.</p>
 
       <p class="fw-actions">
         <a class="fw-link" href="/status">View setup status JSON</a>
