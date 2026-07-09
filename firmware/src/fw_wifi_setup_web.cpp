@@ -581,16 +581,28 @@ String setupRootPageHtml(
 
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
+        <p class="fw-note">Set a local-friendly name for this device. Blank restores the default alias.</p>
+
+        <form class="fw-form" method="post" action="/alias">
+          <div class="fw-field">
+            <label class="fw-label" for="fw-device-alias">Device alias</label>
+            <input class="fw-input" id="fw-device-alias" name="alias" type="text"
+                   maxlength="32" autocomplete="off" value=")HTML";
+  appendHtmlEscapedString(body, fwDeviceAlias());
+  body += R"HTML(">
+          </div>
+
+          <button class="fw-button" type="submit">Save device alias</button>
+        </form>
+
         <ul class="fw-action-list">
-          <li>Device alias: not implemented</li>
           <li>Node role: not implemented</li>
           <li>Radio profile: not implemented</li>
           <li>Sensor calibration: not implemented</li>
-          <li>Save/apply: not implemented</li>
         </ul>
       </section>
 
-      <p class="fw-note">This page is still read-only except for local setup PIN management.</p>
+      <p class="fw-note">This page can update the optional local setup PIN and device alias. Other configuration fields are not implemented yet.</p>
 
       <p class="fw-actions">
         <a class="fw-link" href="/status">View setup status JSON</a>
@@ -645,6 +657,34 @@ void handleSetupUnlock() {
   const String body = setupUnlockPageHtml(currentStatus(), true);
   sendNoStore();
   setupServer->send(403, "text/html", body);
+}
+
+
+void handleSetupAliasChange() {
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  String alias = setupServer->arg("alias");
+  alias.trim();
+
+  if (alias.length() == 0) {
+    fwClearDeviceAlias();
+    redirectToRoot();
+    return;
+  }
+
+  if (!fwSetDeviceAlias(alias.c_str())) {
+    sendNoStore();
+    setupServer->send(
+        400, "text/plain",
+        "Device alias must be blank or 1-32 printable characters.");
+    return;
+  }
+
+  redirectToRoot();
 }
 
 void handleSetupPinChange() {
@@ -785,6 +825,7 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   server.on("/setup.css", HTTP_GET, handleSetupCss);
   server.on("/status", HTTP_GET, handleSetupStatus);
   server.on("/unlock", HTTP_POST, handleSetupUnlock);
+  server.on("/alias", HTTP_POST, handleSetupAliasChange);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
