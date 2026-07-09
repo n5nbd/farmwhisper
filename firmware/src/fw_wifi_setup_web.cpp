@@ -246,6 +246,48 @@ constexpr const char *kSetupCss = R"CSS(
   color: #000080;
   font-weight: 700;
 }
+
+
+
+/* Optional setup PIN layout.
+   Label text sits above the PIN field. The PIN field and save button sit on
+   the same left-justified row when there is room. */
+form[action="/pin"] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+form[action="/pin"] label,
+form[action="/pin"] .fw-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+form[action="/pin"] input,
+form[action="/pin"] .fw-input {
+  width: 7ch;
+  min-width: 7ch;
+  max-width: 7ch;
+  text-align: center;
+}
+
+form[action="/pin"] button,
+form[action="/pin"] .fw-button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+form[action="/pin"] .fw-actions {
+  margin: 0;
+}
+
 )CSS";
 
 FWWiFiSetupWeb::SetupStatus currentStatus() {
