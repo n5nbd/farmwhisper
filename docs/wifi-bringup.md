@@ -151,3 +151,15 @@ station count, AP age, timeout length, and timeout remaining.
 
 This route is read-only. It does not save credentials, change WiFi mode, start
 DNS, redirect clients, or perform captive-portal behavior.
+
+
+## Setup root status page
+
+While the manual setup AP/HTTP mode is active, `http://10.10.10.10/` renders a
+simple human-readable setup status page. It shows the same basic AP/setup state
+as the JSON endpoint, including AP/setup state, HTTP state, SSID, IP, connected
+station count, AP age, timeout length, and timeout remaining.
+
+The root page is server-rendered. There is no JavaScript, no form handling, no
+credential entry, no credential storage, no DNS, and no captive-portal redirect
+in this slice.

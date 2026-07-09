@@ -23,22 +23,6 @@ const IPAddress kApSmokeIp(10, 10, 10, 10);
 const IPAddress kApSmokeGateway(10, 10, 10, 10);
 const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
-constexpr const char *kSetupRootPage = R"HTML(<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FarmWhisper Setup</title>
-</head>
-<body>
-  <h1>FarmWhisper Setup</h1>
-  <p>WiFi setup server is running.</p>
-  <p>Credential entry is not implemented in this slice.</p>
-  <p><a href="/status">View setup status JSON</a></p>
-</body>
-</html>
-)HTML";
-
 WebServer setupServer(80);
 
 bool apSmokeActive = false;
@@ -155,9 +139,86 @@ void handleSetupStatus() {
   setupServer.send(200, "application/json", body);
 }
 
+String setupRootPageHtml() {
+  /*
+   * Server-render the setup page for now. No JavaScript, no forms, and no
+   * browser-side state are needed until the credential/config model exists.
+   */
+  const uint32_t ageS = apSmokeAgeMs() / 1000UL;
+  const uint32_t remainingS = apSmokeRemainingMs() / 1000UL;
+
+  String body;
+  body.reserve(1800);
+
+  body += "<!doctype html>\n";
+  body += "<html lang=\"en\">\n";
+  body += "<head>\n";
+  body += "  <meta charset=\"utf-8\">\n";
+  body += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
+  body += "  <title>FarmWhisper Setup</title>\n";
+  body += "  <style>\n";
+  body += "    body { font-family: system-ui, sans-serif; margin: 1.25rem; line-height: 1.35; }\n";
+  body += "    h1 { margin-bottom: 0.25rem; }\n";
+  body += "    .card { border: 1px solid #444; padding: 1rem; max-width: 34rem; }\n";
+  body += "    dl { display: grid; grid-template-columns: 11rem 1fr; gap: 0.35rem 0.75rem; }\n";
+  body += "    dt { font-weight: 700; }\n";
+  body += "    dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }\n";
+  body += "    .note { margin-top: 1rem; }\n";
+  body += "  </style>\n";
+  body += "</head>\n";
+  body += "<body>\n";
+  body += "  <main class=\"card\">\n";
+  body += "    <h1>FarmWhisper Setup</h1>\n";
+  body += "    <p>WiFi setup server is running.</p>\n";
+  body += "    <dl>\n";
+
+  body += "      <dt>AP smoke/setup</dt><dd>";
+  body += apSmokeActive ? "ON" : "OFF";
+  body += "</dd>\n";
+
+  body += "      <dt>Setup HTTP</dt><dd>";
+  body += setupHttpActive ? "ON" : "OFF";
+  body += "</dd>\n";
+
+  body += "      <dt>SSID</dt><dd>";
+  body += kApSmokeSsid;
+  body += "</dd>\n";
+
+  body += "      <dt>IP</dt><dd>";
+  body += WiFi.softAPIP().toString();
+  body += "</dd>\n";
+
+  body += "      <dt>Stations</dt><dd>";
+  body += WiFi.softAPgetStationNum();
+  body += "</dd>\n";
+
+  body += "      <dt>Age</dt><dd>";
+  body += ageS;
+  body += " s</dd>\n";
+
+  body += "      <dt>Timeout</dt><dd>";
+  body += kApSmokeTimeoutMs / 1000UL;
+  body += " s</dd>\n";
+
+  body += "      <dt>Remaining</dt><dd>";
+  body += remainingS;
+  body += " s</dd>\n";
+
+  body += "    </dl>\n";
+  body += "    <p class=\"note\">Credential entry is not implemented in this slice.</p>\n";
+  body += "    <p><a href=\"/status\">View setup status JSON</a></p>\n";
+  body += "  </main>\n";
+  body += "</body>\n";
+  body += "</html>\n";
+
+  return body;
+}
+
 void handleSetupRoot() {
+  const String body = setupRootPageHtml();
+
   setupServer.sendHeader("Cache-Control", "no-store");
-  setupServer.send(200, "text/html", kSetupRootPage);
+  setupServer.send(200, "text/html", body);
 }
 
 void handleSetupNotFound() {

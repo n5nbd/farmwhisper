@@ -67,3 +67,10 @@ Serial command `a` remains the manual bench toggle for AP smoke/setup mode.
 While the manual setup AP is active, `http://10.10.10.10/status` returns a
 read-only JSON status snapshot for setup/AP HTTP validation. It is available
 only while AP setup HTTP mode is running.
+
+
+## WiFi setup root page
+
+While the manual setup AP is active, `http://10.10.10.10/` serves a simple
+server-rendered setup status page. `http://10.10.10.10/status` remains the
+read-only JSON status endpoint.
