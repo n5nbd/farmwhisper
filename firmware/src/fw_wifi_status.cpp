@@ -4,6 +4,12 @@
 
 namespace {
 
+constexpr const char *kApSmokeSsid = "FarmWhisper-Setup";
+constexpr uint8_t kApSmokeChannel = 6;
+constexpr uint8_t kApSmokeMaxClients = 2;
+
+bool apSmokeActive = false;
+
 const char *wifiModeText(wifi_mode_t mode) {
   switch (mode) {
   case WIFI_OFF:
@@ -36,6 +42,11 @@ const char *wifiStatusText(wl_status_t status) {
   case WL_DISCONNECTED:
     return "DISCONNECTED";
   default:
+    /*
+     * ESP32 Arduino commonly reports 255 when WiFi is OFF or unavailable.
+     * Treat that as expected during component validation rather than as a
+     * mysterious unknown error.
+     */
     if (static_cast<int>(status) == 255) {
       return "OFF_OR_UNAVAILABLE";
     }
@@ -48,9 +59,31 @@ const char *wifiAuthText(wifi_auth_mode_t authMode) {
 }
 
 void forceWifiOff() {
+  /*
+   * Keep this conservative while WiFi bring-up is still diagnostic-only.
+   * Clearing scan data and disabling the radio prevents diagnostics from
+   * changing the validated component-test baseline after they return.
+   */
   WiFi.scanDelete();
+  WiFi.softAPdisconnect(true);
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
+  apSmokeActive = false;
+}
+
+void printApStatus(Stream &out) {
+  if (!apSmokeActive) {
+    return;
+  }
+
+  out.print("[wifi] ap ssid=\"");
+  out.print(kApSmokeSsid);
+  out.print("\" ip=");
+  out.print(WiFi.softAPIP());
+  out.print(" ch=");
+  out.print(kApSmokeChannel);
+  out.print(" stations=");
+  out.println(WiFi.softAPgetStationNum());
 }
 
 } // namespace
@@ -58,20 +91,35 @@ void forceWifiOff() {
 namespace FWWiFiStatus {
 
 void begin() {
+  /*
+   * Disable persistence before touching mode so diagnostics do not write
+   * network state or credentials to flash.
+   */
   WiFi.persistent(false);
   forceWifiOff();
 }
 
 void printStatus(Stream &out) {
+  const wifi_mode_t mode = WiFi.getMode();
   const wl_status_t status = WiFi.status();
 
   out.print("[wifi] mode=");
-  out.print(wifiModeText(WiFi.getMode()));
-  out.print(" status=");
-  out.print(wifiStatusText(status));
-  out.print("(");
-  out.print(static_cast<int>(status));
-  out.println(")");
+  out.print(wifiModeText(mode));
+
+  if (mode == WIFI_AP) {
+    out.print(" staStatus=N/A_AP_MODE");
+  } else {
+    out.print(" status=");
+    out.print(wifiStatusText(status));
+    out.print("(");
+    out.print(static_cast<int>(status));
+    out.print(")");
+  }
+
+  out.print(" apSmoke=");
+  out.println(apSmokeActive ? "ON" : "OFF");
+
+  printApStatus(out);
 }
 
 void scanOnce(Stream &out) {
@@ -79,9 +127,15 @@ void scanOnce(Stream &out) {
   out.println("[wifi] scan begin");
   printStatus(out);
 
+  /*
+   * STA mode is enabled only for this synchronous manual scan. The command
+   * must always end by forcing WiFi back OFF. If the AP smoke test was active,
+   * this command intentionally tears it down before scanning.
+   */
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(false, false);
+  apSmokeActive = false;
   delay(100);
 
   const int networkCount = WiFi.scanNetworks(false, true);
@@ -116,6 +170,46 @@ void scanOnce(Stream &out) {
 
   forceWifiOff();
   out.println("[wifi] scan done; mode=OFF");
+  printStatus(out);
+}
+
+void toggleApSmoke(Stream &out) {
+  out.println();
+
+  if (apSmokeActive) {
+    out.println("[wifi] AP smoke stop");
+    forceWifiOff();
+    printStatus(out);
+    return;
+  }
+
+  /*
+   * Manual AP smoke test only. This proves the ESP32 can advertise a setup
+   * network before any portal/server/credential logic is introduced.
+   */
+  WiFi.persistent(false);
+  WiFi.scanDelete();
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_AP);
+
+  const bool started = WiFi.softAP(
+      kApSmokeSsid,
+      nullptr,
+      kApSmokeChannel,
+      false,
+      kApSmokeMaxClients);
+
+  if (!started) {
+    out.println("[wifi] AP smoke start failed");
+    forceWifiOff();
+    printStatus(out);
+    return;
+  }
+
+  apSmokeActive = true;
+
+  out.println("[wifi] AP smoke start");
+  out.println("[wifi] no web server, no DNS, no captive portal, no credentials");
   printStatus(out);
 }
 

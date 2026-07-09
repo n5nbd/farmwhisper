@@ -19,6 +19,20 @@ The firmware does not:
 
 ## Serial diagnostics
 
+### `a` — WiFi AP smoke test
+
+Toggles a temporary open SoftAP named `FarmWhisper-Setup`.
+
+This is only a radio smoke test. It does not start a web server, DNS server, captive portal, credential UI, or credential storage.
+
+Expected start output includes:
+
+    [wifi] AP smoke start
+    [wifi] no web server, no DNS, no captive portal, no credentials
+    [wifi] mode=AP
+
+Press `a` again to stop the AP and return WiFi OFF.
+
 ### `x` — WiFi status
 
 Prints the current WiFi radio mode and status without changing WiFi state.
@@ -61,14 +75,15 @@ After any WiFi change:
     Button short/long/double/triple still works.
     Existing serial commands still work: h, s, i, g, v, r.
     GPIO37/38/39/40 smoke diagnostic still works.
+    a toggles AP smoke mode manually.
     x reports WiFi state without changing it.
     w scans only when manually pressed.
     After w completes, WiFi returns to OFF.
 
 ## Next intended slices
 
-1. Manual AP-mode smoke test.
-2. Manual AP off command or AP timeout.
+1. Manual AP off timeout.
+2. Minimal captive portal page served only after manual command.
 3. Minimal captive portal page served only after manual command.
 4. Credential-entry UI.
 5. Credential storage.
