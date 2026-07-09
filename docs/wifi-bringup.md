@@ -201,3 +201,11 @@ records.
 
 A future user-defined alias can provide a friendly name such as `Coop Feed
 Sensor`, but the alias should not replace the hardware-derived device ID.
+
+
+## Setup page styling
+
+The setup root page uses a small server-rendered, Windows-98-ish visual style:
+high contrast, obvious borders, simple system fonts, and no JavaScript. This
+styling does not change WiFi state, routes, credentials, storage, DNS, or
+captive-portal behavior.
