@@ -29,7 +29,7 @@ Adding a new command must not change behavior of existing commands or boot-time 
 
 ## Manual AP smoke test
 
-`a` toggles a temporary open SoftAP named `FarmWhisper-Setup` at `10.10.10.10`.
+`a` toggles a temporary open SoftAP named `FarmWhisper-XXXXXX` at `10.10.10.10`.
 
 This command proves the ESP32 can advertise a setup network. It must not start a web server, DNS server, captive portal, credential entry UI, or credential storage.
 
@@ -42,11 +42,11 @@ If `w` is run while AP smoke mode is active, the scan command tears the AP down 
 
 The AP smoke test times out automatically after 5 minutes.
 
-When the timeout fires, firmware stops the AP and returns WiFi OFF. This prevents `FarmWhisper-Setup` from being left broadcasting indefinitely during bench testing.
+When the timeout fires, firmware stops the AP and returns WiFi OFF. This prevents `FarmWhisper-XXXXXX` from being left broadcasting indefinitely during bench testing.
 
 ## WiFi AP smoke/setup HTTP placeholder
 
-Command `a` toggles the manual `FarmWhisper-Setup` AP. While the AP is active,
+Command `a` toggles the manual `FarmWhisper-XXXXXX` AP. While the AP is active,
 the firmware serves a placeholder page at `http://10.10.10.10/`.
 
 The placeholder server exists only for the lifetime of AP smoke/setup mode.
@@ -74,3 +74,10 @@ only while AP setup HTTP mode is running.
 While the manual setup AP is active, `http://10.10.10.10/` serves a simple
 server-rendered setup status page. `http://10.10.10.10/status` remains the
 read-only JSON status endpoint.
+
+
+## MAC-derived setup AP name
+
+WiFi setup AP status now reports a device-specific SSID in the form
+`FarmWhisper-XXXXXX`, where `XXXXXX` is the last six uppercase hexadecimal
+characters of the ESP32 base WiFi MAC address.

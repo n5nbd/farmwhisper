@@ -21,7 +21,7 @@ The firmware does not:
 
 ### `a` — WiFi AP smoke test
 
-Toggles a temporary open SoftAP named `FarmWhisper-Setup` at `10.10.10.10`.
+Toggles a temporary open SoftAP named `FarmWhisper-XXXXXX` at `10.10.10.10`.
 
 This is only a radio smoke test. It does not start a web server, DNS server, captive portal, credential UI, or credential storage.
 
@@ -30,7 +30,7 @@ Expected start output includes:
     [wifi] AP smoke start
     [wifi] no web server, no DNS, no captive portal, no credentials
     [wifi] mode=AP
-    [wifi] ap ssid="FarmWhisper-Setup" ip=10.10.10.10
+    [wifi] ap ssid="FarmWhisper-XXXXXX" ip=10.10.10.10
 
 Press `a` again to stop the AP and return WiFi OFF.
 
@@ -100,7 +100,7 @@ that AP is active, a minimal HTTP placeholder server.
 
 Current setup address:
 
-- AP SSID: `FarmWhisper-Setup`
+- AP SSID: `FarmWhisper-XXXXXX`
 - AP/gateway IP: `10.10.10.10`
 - Placeholder page: `http://10.10.10.10/`
 
@@ -116,7 +116,7 @@ that AP is active, a minimal HTTP placeholder server.
 
 Current setup address:
 
-- AP SSID: `FarmWhisper-Setup`
+- AP SSID: `FarmWhisper-XXXXXX`
 - AP/gateway IP: `10.10.10.10`
 - Placeholder page: `http://10.10.10.10/`
 
@@ -163,3 +163,23 @@ station count, AP age, timeout length, and timeout remaining.
 The root page is server-rendered. There is no JavaScript, no form handling, no
 credential entry, no credential storage, no DNS, and no captive-portal redirect
 in this slice.
+
+
+## MAC-derived setup SSID
+
+The default setup AP SSID is derived from the ESP32 WiFi MAC address:
+
+- Format: `FarmWhisper-XXXXXX`
+- `XXXXXX` is the last six uppercase hexadecimal characters of the base WiFi
+  MAC address.
+
+This gives each device a short deterministic setup name that can be printed on
+a label or laser-etched on the case during assembly.
+
+Example:
+
+- MAC suffix: `A1B2C3`
+- Setup AP SSID: `FarmWhisper-A1B2C3`
+
+A future user-defined alias may provide a friendly name, but it should not
+replace this hardware identity contract.
