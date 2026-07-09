@@ -43,3 +43,12 @@ If `w` is run while AP smoke mode is active, the scan command tears the AP down 
 The AP smoke test times out automatically after 5 minutes.
 
 When the timeout fires, firmware stops the AP and returns WiFi OFF. This prevents `FarmWhisper-Setup` from being left broadcasting indefinitely during bench testing.
+
+## WiFi AP smoke/setup HTTP placeholder
+
+Command `a` toggles the manual `FarmWhisper-Setup` AP. While the AP is active,
+the firmware serves a placeholder page at `http://10.10.10.10/`.
+
+The placeholder server exists only for the lifetime of AP smoke/setup mode.
+There is no DNS server, captive portal redirect, credential entry, credential
+storage, or automatic WiFi behavior in this slice.

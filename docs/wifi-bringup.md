@@ -92,3 +92,35 @@ After any WiFi change:
 4. Credential-entry UI.
 5. Credential storage.
 6. Boot-time connection policy.
+
+## Manual HTTP placeholder
+
+The `a` serial command starts the manual SoftAP smoke/setup mode and, while
+that AP is active, a minimal HTTP placeholder server.
+
+Current setup address:
+
+- AP SSID: `FarmWhisper-Setup`
+- AP/gateway IP: `10.10.10.10`
+- Placeholder page: `http://10.10.10.10/`
+
+This is not a captive portal yet. There is no DNS redirect, credential form,
+credential storage, STA connection attempt, or boot-time WiFi behavior in this
+slice. The HTTP server is stopped whenever AP smoke/setup mode is stopped,
+including the manual `a` stop path and the AP smoke timeout path.
+
+## Manual HTTP placeholder
+
+The `a` serial command starts the manual SoftAP smoke/setup mode and, while
+that AP is active, a minimal HTTP placeholder server.
+
+Current setup address:
+
+- AP SSID: `FarmWhisper-Setup`
+- AP/gateway IP: `10.10.10.10`
+- Placeholder page: `http://10.10.10.10/`
+
+This is not a captive portal yet. There is no DNS redirect, credential form,
+credential storage, STA connection attempt, or boot-time WiFi behavior in this
+slice. The HTTP server is stopped whenever AP smoke/setup mode is stopped,
+including the manual `a` stop path and the AP smoke timeout path.

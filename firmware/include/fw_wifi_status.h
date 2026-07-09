@@ -8,7 +8,8 @@
  * This module is intentionally not a connection manager and not a captive
  * portal. At this stage WiFi must remain OFF unless a serial diagnostic
  * command explicitly asks for status, a one-shot scan, or a manual AP smoke
- * test.
+ * test. The AP smoke test owns a tiny placeholder HTTP server only while the
+ * setup AP is active.
  */
 
 namespace FWWiFiStatus {
@@ -25,9 +26,11 @@ void begin();
 void printStatus(Stream &out);
 
 /*
- * Enforce WiFi diagnostic timeouts.
+ * Service manual WiFi diagnostics.
  *
- * This must not start WiFi, scan, connect, or run portal behavior.
+ * This enforces AP smoke/setup timeout and polls the placeholder HTTP server
+ * while AP smoke/setup mode is active. It must not start WiFi, scan, connect,
+ * or run captive-portal behavior.
  */
 void service(Stream &out);
 
@@ -40,8 +43,9 @@ void scanOnce(Stream &out);
 /*
  * Toggle a manual SoftAP smoke test.
  *
- * This starts or stops only the ESP32 access point radio. It does not start a
- * web server, DNS server, captive portal, credential UI, or storage layer.
+ * This starts or stops only the ESP32 access point radio and its manual
+ * placeholder HTTP server. It does not start a DNS server, captive portal,
+ * credential UI, or storage layer.
  */
 void toggleApSmoke(Stream &out);
 

@@ -1,5 +1,6 @@
 #include "fw_wifi_status.h"
 
+#include <WebServer.h>
 #include <WiFi.h>
 
 namespace {
@@ -8,7 +9,7 @@ constexpr const char *kApSmokeSsid = "FarmWhisper-Setup";
 constexpr uint8_t kApSmokeChannel = 6;
 constexpr uint8_t kApSmokeMaxClients = 2;
 
-// Manual AP smoke-test timeout target. Shutdown behavior comes in the next slice.
+// Manual AP smoke-test timeout.
 constexpr uint32_t kApSmokeTimeoutMs = 5UL * 60UL * 1000UL;
 
 /*
@@ -22,7 +23,25 @@ const IPAddress kApSmokeIp(10, 10, 10, 10);
 const IPAddress kApSmokeGateway(10, 10, 10, 10);
 const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
+constexpr const char *kSetupRootPage = R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FarmWhisper Setup</title>
+</head>
+<body>
+  <h1>FarmWhisper Setup</h1>
+  <p>WiFi setup server is running.</p>
+  <p>Credential entry is not implemented in this slice.</p>
+</body>
+</html>
+)HTML";
+
+WebServer setupServer(80);
+
 bool apSmokeActive = false;
+bool setupHttpActive = false;
 uint32_t apSmokeStartedMs = 0;
 
 const char *wifiModeText(wifi_mode_t mode) {
@@ -73,12 +92,55 @@ const char *wifiAuthText(wifi_auth_mode_t authMode) {
   return authMode == WIFI_AUTH_OPEN ? "open" : "secured";
 }
 
+void handleSetupRoot() {
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send(200, "text/html", kSetupRootPage);
+}
+
+void handleSetupNotFound() {
+  setupServer.send(404, "text/plain", "FarmWhisper setup placeholder: not found");
+}
+
+void startSetupHttpServer(Stream &out) {
+  if (setupHttpActive) {
+    return;
+  }
+
+  /*
+   * This server is deliberately tiny and manual-only. It proves that the AP
+   * can host a page at the setup address without adding DNS, redirect logic,
+   * credential forms, NVS writes, or boot-time WiFi behavior.
+   */
+  setupServer.on("/", HTTP_GET, handleSetupRoot);
+  setupServer.onNotFound(handleSetupNotFound);
+  setupServer.begin();
+  setupHttpActive = true;
+
+  out.print("[wifi] setup http start url=http://");
+  out.print(kApSmokeIp);
+  out.println("/");
+}
+
+void stopSetupHttpServer() {
+  if (!setupHttpActive) {
+    return;
+  }
+
+  /*
+   * Stop accepting HTTP traffic before the AP radio is torn down. The WebServer
+   * object remains allocated for the next manual AP smoke/setup session.
+   */
+  setupServer.close();
+  setupHttpActive = false;
+}
+
 void forceWifiOff() {
   /*
    * Keep this conservative while WiFi bring-up is still diagnostic-only.
    * Clearing scan data and disabling the radio prevents diagnostics from
    * changing the validated component-test baseline after they return.
    */
+  stopSetupHttpServer();
   WiFi.scanDelete();
   WiFi.softAPdisconnect(true);
   WiFi.disconnect(false, false);
@@ -100,6 +162,8 @@ void printApStatus(Stream &out) {
   out.print(kApSmokeChannel);
   out.print(" stations=");
   out.print(WiFi.softAPgetStationNum());
+  out.print(" http=");
+  out.print(setupHttpActive ? "ON" : "OFF");
   out.print(" ageS=");
   out.print((millis() - apSmokeStartedMs) / 1000UL);
   out.print(" timeoutS=");
@@ -137,7 +201,9 @@ void printStatus(Stream &out) {
   }
 
   out.print(" apSmoke=");
-  out.println(apSmokeActive ? "ON" : "OFF");
+  out.print(apSmokeActive ? "ON" : "OFF");
+  out.print(" setupHttp=");
+  out.println(setupHttpActive ? "ON" : "OFF");
 
   printApStatus(out);
 }
@@ -145,6 +211,10 @@ void printStatus(Stream &out) {
 void service(Stream &out) {
   if (!apSmokeActive) {
     return;
+  }
+
+  if (setupHttpActive) {
+    setupServer.handleClient();
   }
 
   if ((millis() - apSmokeStartedMs) < kApSmokeTimeoutMs) {
@@ -170,6 +240,7 @@ void scanOnce(Stream &out) {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(false, false);
+  stopSetupHttpServer();
   apSmokeActive = false;
   delay(100);
 
@@ -219,8 +290,9 @@ void toggleApSmoke(Stream &out) {
   }
 
   /*
-   * Manual AP smoke test only. This proves the ESP32 can advertise a setup
-   * network before any portal/server/credential logic is introduced.
+   * Manual AP smoke test only. This proves the ESP32 can advertise and serve a
+   * setup placeholder before any DNS, portal, credential, or storage logic is
+   * introduced.
    */
   WiFi.persistent(false);
   WiFi.scanDelete();
@@ -252,7 +324,8 @@ void toggleApSmoke(Stream &out) {
   apSmokeStartedMs = millis();
 
   out.println("[wifi] AP smoke start");
-  out.println("[wifi] no web server, no DNS, no captive portal, no credentials");
+  startSetupHttpServer(out);
+  out.println("[wifi] no DNS, no captive portal, no credentials, no storage");
   printStatus(out);
 }
 
