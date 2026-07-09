@@ -2,9 +2,16 @@
 
 #include <Arduino.h>
 
-// Read-only scaffold for future FarmWhisper product configuration.
+// FarmWhisper product configuration model.
 //
-// This intentionally does not persist anything yet. The first real field is a
-// device alias, but for this slice it is only a compiled-in default so the model
-// can be introduced without changing setup behavior.
+// This module owns product-facing configuration fields that are independent of
+// the WiFi/setup transport. Values are NVS-backed, but this slice only reads and
+// exposes the device alias. Setup UI editing comes later.
+constexpr size_t kFwDeviceAliasMaxLen = 32;
+
+void fwLoadDeviceConfig();
+
 const char* fwDeviceAlias();
+
+bool fwSetDeviceAlias(const char* alias);
+void fwClearDeviceAlias();
