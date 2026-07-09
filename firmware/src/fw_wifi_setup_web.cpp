@@ -1,11 +1,15 @@
 #include "fw_wifi_setup_web.h"
 
+#include <Preferences.h>
+
 namespace {
 
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
 constexpr const char *kDefaultSetupPin = "123456";
+constexpr const char *kSetupPrefsNamespace = "fw_setup";
+constexpr const char *kSetupPinKey = "pin";
 
 char setupPin[7] = "123456";
 bool setupUnlocked = false;
@@ -28,6 +32,38 @@ bool isSixDigitPin(const String &pin) {
 void resetSetupPinToDefault() {
   strncpy(setupPin, kDefaultSetupPin, sizeof(setupPin));
   setupPin[sizeof(setupPin) - 1] = '\0';
+}
+
+bool saveSetupPinToNvs(const char *pin) {
+  Preferences prefs;
+
+  if (!prefs.begin(kSetupPrefsNamespace, false)) {
+    return false;
+  }
+
+  const size_t written = prefs.putString(kSetupPinKey, pin);
+  prefs.end();
+
+  return written > 0;
+}
+
+void loadSetupPinFromNvs() {
+  Preferences prefs;
+
+  if (!prefs.begin(kSetupPrefsNamespace, true)) {
+    resetSetupPinToDefault();
+    return;
+  }
+
+  const String storedPin = prefs.getString(kSetupPinKey, "");
+  prefs.end();
+
+  if (!isSixDigitPin(storedPin)) {
+    resetSetupPinToDefault();
+    return;
+  }
+
+  storedPin.toCharArray(setupPin, sizeof(setupPin));
 }
 
 constexpr const char *kSetupCss = R"CSS(
@@ -297,9 +333,9 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
   /*
    * Server-render the setup page.
    *
-   * This slice keeps setup lock state and PIN changes in RAM only.
-   * It does not add PIN storage, config storage, JavaScript, DNS,
-   * captive-portal behavior, or saved setup changes.
+   * This slice persists setup PIN changes in NVS.
+   * It does not add general config storage, JavaScript, DNS,
+   * captive-portal behavior, or saved setup changes beyond the setup PIN.
    */
   String body;
   body.reserve(3200);
@@ -363,10 +399,10 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
 
       <section class="fw-section" aria-labelledby="fw-lock-title">
         <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
-        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops. PIN management is not saved in this slice.</p>
+        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops. PIN changes are saved in local device storage.</p>
         <ul class="fw-action-list">
-          <li>Current PIN: RAM session value</li>
-          <li>Default after AP restart: 123456</li>
+          <li>Current PIN: saved device value</li>
+          <li>Factory/default PIN: 123456</li>
           <li>Physical recovery reset: planned button gesture</li>
         </ul>
 
@@ -388,7 +424,7 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
                    autocomplete="off" required>
           </div>
 
-          <button class="fw-button" type="submit">Change PIN for this AP session</button>
+          <button class="fw-button" type="submit">Change setup PIN</button>
         </form>
       </section>
 
@@ -425,7 +461,7 @@ void handleSetupRoot() {
     const char *pinMessage = nullptr;
 
     if (setupPinNoticePending) {
-      pinMessage = "PIN changed for this AP session. It will reset to 123456 when setup AP stops.";
+      pinMessage = "PIN changed and saved. Future setup sessions will require the new PIN.";
       setupPinNoticePending = false;
     }
 
@@ -469,7 +505,19 @@ void handleSetupPinChange() {
     return;
   }
 
-  pin.toCharArray(setupPin, sizeof(setupPin));
+  char newPin[sizeof(setupPin)];
+  pin.toCharArray(newPin, sizeof(newPin));
+
+  if (!saveSetupPinToNvs(newPin)) {
+    const String body = setupRootPageHtml(
+        currentStatus(), "Could not save PIN to device storage.", true);
+    sendNoStore();
+    setupServer->send(500, "text/html", body);
+    return;
+  }
+
+  strncpy(setupPin, newPin, sizeof(setupPin));
+  setupPin[sizeof(setupPin) - 1] = '\0';
   setupPinNoticePending = true;
   redirectToRoot();
 }
@@ -532,6 +580,7 @@ namespace FWWiFiSetupWeb {
 void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   setupServer = &server;
   provideStatus = statusProvider;
+  loadSetupPinFromNvs();
 
   server.on("/", HTTP_GET, handleSetupRoot);
   server.on("/setup.css", HTTP_GET, handleSetupCss);
@@ -544,7 +593,6 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
 void resetSession() {
   setupUnlocked = false;
   setupPinNoticePending = false;
-  resetSetupPinToDefault();
 }
 
 }  // namespace FWWiFiSetupWeb
