@@ -551,8 +551,8 @@ String setupRootPageHtml(
   body += R"HTML( s</dd>
       </dl>
 
-      <section class="fw-section" aria-labelledby="fw-lock-title">
-
+      <section class="fw-section" aria-labelledby="fw-config-title">
+        <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
 )HTML";
 
   if (pinMessage != nullptr) {
@@ -579,12 +579,7 @@ String setupRootPageHtml(
               <button class="fw-button" type="submit">Update</button>
             </div>
           </form>
-        </div>
-      </section>
 
-      <section class="fw-section" aria-labelledby="fw-config-title">
-        <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
-        <div class="fw-config-list">
           <form class="fw-config-row" method="post" action="/alias">
             <div class="fw-config-label">
               <label for="fw-device-alias">Device alias</label>
