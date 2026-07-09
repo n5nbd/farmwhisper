@@ -1,5 +1,14 @@
 #pragma once
 
+/*
+ * Shared firmware configuration constants for component validation.
+ *
+ * Values here are part of the tested baseline unless noted otherwise. Prefer
+ * centralizing timing thresholds, debounce windows, and diagnostic intervals
+ * here so future tuning is visible and reviewable.
+ */
+
+
 #include <Arduino.h>
 
 namespace FWConfig {

@@ -1,5 +1,14 @@
 #pragma once
 
+/*
+ * Button module.
+ *
+ * Owns the validated active-LOW GPIO42 user button path, including debounce
+ * and short/long/double/triple press classification. Preserve existing event
+ * behavior unless intentionally re-validating the human-interface contract.
+ */
+
+
 #include <Arduino.h>
 
 namespace FWButton {

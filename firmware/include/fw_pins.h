@@ -1,5 +1,21 @@
 #pragma once
 
+/*
+ * FarmWhisper validated hardware pin contract.
+ *
+ * These assignments describe the Heltec WiFi LoRa 32 V4 R2/R8 component-
+ * validation baseline. Do not change pin ownership casually: several pins
+ * have already been hardware-regression-tested against the FW100 bring-up
+ * fixture.
+ *
+ * Known validated interfaces:
+ * - GPIO41: one NeoPixel/status pixel
+ * - GPIO42: active-LOW user button
+ * - GPIO45/GPIO46: product I2C bus
+ * - GPIO37/38/39/40: spare expansion smoke-test GPIOs as INPUT_PULLUP
+ */
+
+
 #include <Arduino.h>
 
 // FarmWhisper Heltec WiFi LoRa 32 V4 R2/R8 base connector contract.
