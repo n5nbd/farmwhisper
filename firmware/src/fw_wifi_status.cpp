@@ -34,6 +34,7 @@ constexpr const char *kSetupRootPage = R"HTML(<!doctype html>
   <h1>FarmWhisper Setup</h1>
   <p>WiFi setup server is running.</p>
   <p>Credential entry is not implemented in this slice.</p>
+  <p><a href="/status">View setup status JSON</a></p>
 </body>
 </html>
 )HTML";
@@ -93,6 +94,67 @@ const char *wifiAuthText(wifi_auth_mode_t authMode) {
   return authMode == WIFI_AUTH_OPEN ? "open" : "secured";
 }
 
+uint32_t apSmokeAgeMs() {
+  if (!apSmokeActive) {
+    return 0;
+  }
+
+  return millis() - apSmokeStartedMs;
+}
+
+uint32_t apSmokeRemainingMs() {
+  if (!apSmokeActive) {
+    return 0;
+  }
+
+  const uint32_t ageMs = apSmokeAgeMs();
+  if (ageMs >= kApSmokeTimeoutMs) {
+    return 0;
+  }
+
+  return kApSmokeTimeoutMs - ageMs;
+}
+
+void handleSetupStatus() {
+  /*
+   * Keep this dependency-free for now. A hand-built JSON response is enough
+   * for route validation and avoids pulling in a JSON library before the setup
+   * model exists.
+   */
+  String body;
+  body.reserve(256);
+
+  body += "{\n";
+  body += "  \"apSmoke\": ";
+  body += apSmokeActive ? "true" : "false";
+  body += ",\n";
+  body += "  \"setupHttp\": ";
+  body += setupHttpActive ? "true" : "false";
+  body += ",\n";
+  body += "  \"ssid\": \"";
+  body += kApSmokeSsid;
+  body += "\",\n";
+  body += "  \"ip\": \"";
+  body += WiFi.softAPIP().toString();
+  body += "\",\n";
+  body += "  \"stations\": ";
+  body += WiFi.softAPgetStationNum();
+  body += ",\n";
+  body += "  \"ageS\": ";
+  body += apSmokeAgeMs() / 1000UL;
+  body += ",\n";
+  body += "  \"timeoutS\": ";
+  body += kApSmokeTimeoutMs / 1000UL;
+  body += ",\n";
+  body += "  \"remainingS\": ";
+  body += apSmokeRemainingMs() / 1000UL;
+  body += "\n";
+  body += "}\n";
+
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send(200, "application/json", body);
+}
+
 void handleSetupRoot() {
   setupServer.sendHeader("Cache-Control", "no-store");
   setupServer.send(200, "text/html", kSetupRootPage);
@@ -114,6 +176,7 @@ void startSetupHttpServer(Stream &out) {
    */
   if (!setupHttpRoutesConfigured) {
     setupServer.on("/", HTTP_GET, handleSetupRoot);
+    setupServer.on("/status", HTTP_GET, handleSetupStatus);
     setupServer.onNotFound(handleSetupNotFound);
     setupHttpRoutesConfigured = true;
   }

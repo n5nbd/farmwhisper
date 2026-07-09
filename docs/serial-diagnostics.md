@@ -60,3 +60,10 @@ server. If setup mode is already active, triple press refreshes the 5-minute
 setup timeout.
 
 Serial command `a` remains the manual bench toggle for AP smoke/setup mode.
+
+
+## WiFi setup status endpoint
+
+While the manual setup AP is active, `http://10.10.10.10/status` returns a
+read-only JSON status snapshot for setup/AP HTTP validation. It is available
+only while AP setup HTTP mode is running.

@@ -136,3 +136,18 @@ AP manually.
 
 Future successful setup/config saves should refresh the same 5-minute timer.
 Failed saves should not refresh the timer.
+
+
+## Setup HTTP status endpoint
+
+While the manual setup AP/HTTP mode is active, the firmware serves a small
+status endpoint:
+
+- `http://10.10.10.10/status`
+
+The endpoint returns dependency-free JSON with setup/AP state such as whether
+AP smoke/setup mode is active, whether setup HTTP is active, AP SSID, AP IP,
+station count, AP age, timeout length, and timeout remaining.
+
+This route is read-only. It does not save credentials, change WiFi mode, start
+DNS, redirect clients, or perform captive-portal behavior.
