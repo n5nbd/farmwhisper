@@ -314,6 +314,47 @@ constexpr const char *kSetupCss = R"CSS(
 
 
 
+
+/* Generic FarmWhisper configuration control layout.
+   Each row has a full-width label/explanation line, then a control area and
+   an action button column. Text-only rows can span the full width. */
+.fw-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.fw-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  align-items: end;
+}
+
+.fw-config-label {
+  grid-column: 1 / -1;
+  font-weight: bold;
+}
+
+.fw-config-control {
+  min-width: 0;
+}
+
+.fw-config-action {
+  white-space: nowrap;
+}
+
+.fw-config-control .fw-input,
+.fw-config-control .fw-select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fw-config-note {
+  grid-column: 1 / -1;
+}
+
+
 /* Optional setup PIN layout.
    Label text sits above the PIN field. The PIN field and save button sit on
    the same left-justified row when there is room. */
@@ -581,25 +622,39 @@ String setupRootPageHtml(
 
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
-        <p class="fw-note">Set a local-friendly name for this device. Blank restores the default alias.</p>
+        <div class="fw-config-list">
+          <form class="fw-config-row" method="post" action="/alias">
+            <div class="fw-config-label">
+              <label for="fw-device-alias">Device alias</label>
+            </div>
 
-        <form class="fw-form" method="post" action="/alias">
-          <div class="fw-field">
-            <label class="fw-label" for="fw-device-alias">Device alias</label>
-            <input class="fw-input" id="fw-device-alias" name="alias" type="text"
-                   maxlength="32" autocomplete="off" value=")HTML";
+            <div class="fw-config-control">
+              <input class="fw-input" id="fw-device-alias" name="alias" type="text"
+                     maxlength="32" autocomplete="off" value=")HTML";
   appendHtmlEscapedString(body, fwDeviceAlias());
   body += R"HTML(">
+            </div>
+
+            <div class="fw-config-action">
+              <button class="fw-button" type="submit">Update</button>
+            </div>
+          </form>
+
+          <div class="fw-config-row">
+            <div class="fw-config-label">Node role</div>
+            <div class="fw-config-note">Not implemented yet.</div>
           </div>
 
-          <button class="fw-button" type="submit">Save device alias</button>
-        </form>
+          <div class="fw-config-row">
+            <div class="fw-config-label">Radio profile</div>
+            <div class="fw-config-note">Not implemented yet.</div>
+          </div>
 
-        <ul class="fw-action-list">
-          <li>Node role: not implemented</li>
-          <li>Radio profile: not implemented</li>
-          <li>Sensor calibration: not implemented</li>
-        </ul>
+          <div class="fw-config-row">
+            <div class="fw-config-label">Sensor calibration</div>
+            <div class="fw-config-note">Not implemented yet.</div>
+          </div>
+        </div>
       </section>
 
       <p class="fw-note">This page can update the optional local setup PIN and device alias. Other configuration fields are not implemented yet.</p>
