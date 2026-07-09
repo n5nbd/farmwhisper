@@ -169,7 +169,7 @@ void startSetupHttpServer(Stream &out) {
   /*
    * This server is deliberately tiny and manual-only. It proves that the AP
    * can host a page at the setup address without adding DNS, redirect logic,
-   * credential forms, NVS writes, or boot-time WiFi behavior.
+   * network-credential forms, general config writes, or boot-time WiFi behavior.
    */
   if (!setupHttpRoutesConfigured) {
     FWWiFiSetupWeb::registerRoutes(setupServer, currentSetupWebStatus);
@@ -360,7 +360,7 @@ void startApSetup(Stream &out) {
 
   /*
    * Manual setup AP only. This proves the ESP32 can advertise and serve a
-   * setup placeholder before any DNS, portal, credential, or storage logic is
+   * setup placeholder before any DNS, portal, network-credential, or general config storage logic is
    * introduced. It is safe to call from the physical button path.
    */
   buildDeviceIdentity();

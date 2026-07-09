@@ -279,7 +279,7 @@ String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPi
   body += R"HTML(
       <section class="fw-section" aria-labelledby="fw-unlock-title">
         <h2 class="fw-section-title" id="fw-unlock-title">Local setup lock</h2>
-        <p class="fw-note">Default PIN: 123456</p>
+        <p class="fw-note">Factory/default PIN: 123456</p>
 
         <form class="fw-form" method="post" action="/unlock">
           <div class="fw-field">
@@ -403,7 +403,7 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
         <ul class="fw-action-list">
           <li>Current PIN: saved device value</li>
           <li>Factory/default PIN: 123456</li>
-          <li>Physical recovery reset: planned button gesture</li>
+          <li>Physical recovery reset: Hold button until LED flashes red five times (~10 seconds).</li>
         </ul>
 
 )HTML";
@@ -531,7 +531,7 @@ void handleSetupStatus() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  body.reserve(360);
+  body.reserve(560);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
@@ -542,6 +542,11 @@ void handleSetupStatus() {
   body += "  \"setupUnlocked\": ";
   body += setupUnlocked ? "true" : "false";
   body += ",\n";
+  body += "  \"setupPinStorage\": \"nvs\",\n";
+  body += "  \"setupPinFactoryDefault\": \"";
+  body += kDefaultSetupPin;
+  body += "\",\n";
+  body += "  \"setupPinRecovery\": \"button_hold_10s_while_setup_ap_active\",\n";
   body += "  \"deviceId\": \"";
   body += status.deviceId;
   body += "\",\n";

@@ -43,10 +43,10 @@ using StatusProvider = SetupStatus (*)();
 void registerRoutes(WebServer &server, StatusProvider statusProvider);
 
 /*
- * Clear the RAM-only setup unlock state.
+ * Clear the current setup unlock state.
  *
  * WiFi/AP lifecycle code calls this whenever the setup HTTP server/AP stops so
- * a future setup session starts locked again.
+ * a future setup session starts locked again without changing the stored PIN.
  */
 void resetSession();
 
