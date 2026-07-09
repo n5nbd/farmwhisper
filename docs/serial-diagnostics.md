@@ -91,3 +91,10 @@ WiFi setup status now reports a device ID in the form `FWP-XXXXXX`, where
 
 The device ID appears in serial WiFi status, the setup root page, and the
 `/status` JSON endpoint.
+
+
+## WiFi setup stylesheet route
+
+While setup AP/HTTP mode is active, `http://10.10.10.10/setup.css` serves the
+compiled-in stylesheet for the setup root page. This is a presentation-only
+route and does not affect WiFi state or diagnostics.

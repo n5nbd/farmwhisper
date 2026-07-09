@@ -209,3 +209,19 @@ The setup root page uses a small server-rendered, Windows-98-ish visual style:
 high contrast, obvious borders, simple system fonts, and no JavaScript. This
 styling does not change WiFi state, routes, credentials, storage, DNS, or
 captive-portal behavior.
+
+
+## Setup stylesheet route
+
+The setup root page links a firmware-served stylesheet at
+`http://10.10.10.10/setup.css`.
+
+This keeps the generated HTML smaller and establishes a CSS route before any
+filesystem-backed asset work. The stylesheet is still compiled into firmware;
+there is no LittleFS/SPIFFS dependency in this slice.
+
+Routes while setup AP/HTTP mode is active:
+
+- `/` renders the setup status page.
+- `/setup.css` serves the page stylesheet.
+- `/status` serves read-only setup JSON.

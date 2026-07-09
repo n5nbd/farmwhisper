@@ -32,6 +32,81 @@ const IPAddress kApSmokeIp(10, 10, 10, 10);
 const IPAddress kApSmokeGateway(10, 10, 10, 10);
 const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
+
+constexpr const char *kSetupCss = R"CSS(
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  color: #000;
+  background: #008080;
+  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.35;
+}
+
+.card {
+  max-width: 36rem;
+  margin: 0 auto;
+  color: #000;
+  background: #c0c0c0;
+  border-color: #fff #404040 #404040 #fff;
+  border-style: solid;
+  border-width: 2px;
+  box-shadow: 1px 1px 0 #000;
+}
+
+h1 {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  color: #fff;
+  background: #000080;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+p {
+  margin: 0.75rem 0.75rem 0;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0.75rem;
+  padding: 0.75rem;
+  background: #fff;
+  border-color: #404040 #fff #fff #404040;
+  border-style: solid;
+  border-width: 2px;
+}
+
+dt {
+  font-weight: 700;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+a {
+  color: #000080;
+  font-weight: 700;
+}
+
+.note {
+  margin-top: 0.75rem;
+}
+)CSS";
+
 WebServer setupServer(80);
 
 bool apSmokeActive = false;
@@ -204,19 +279,7 @@ String setupRootPageHtml() {
   body += "  <meta charset=\"utf-8\">\n";
   body += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
   body += "  <title>FarmWhisper Setup</title>\n";
-  body += "  <style>\n";
-  body += "    :root { color-scheme: light; }\n";
-  body += "    * { box-sizing: border-box; }\n";
-  body += "    body { margin: 0; padding: 1rem; color: #000; background: #008080; font-family: Arial, Helvetica, sans-serif; line-height: 1.35; }\n";
-  body += "    .card { max-width: 36rem; margin: 0 auto; color: #000; background: #c0c0c0; border-color: #fff #404040 #404040 #fff; border-style: solid; border-width: 2px; box-shadow: 1px 1px 0 #000; }\n";
-  body += "    h1 { margin: 0; padding: 0.35rem 0.5rem; color: #fff; background: #000080; font-size: 1.15rem; font-weight: 700; }\n";
-  body += "    p { margin: 0.75rem 0.75rem 0; }\n";
-  body += "    dl { display: grid; grid-template-columns: 11rem 1fr; gap: 0.35rem 0.75rem; margin: 0.75rem; padding: 0.75rem; background: #fff; border-color: #404040 #fff #fff #404040; border-style: solid; border-width: 2px; }\n";
-  body += "    dt { font-weight: 700; }\n";
-  body += "    dd { margin: 0; overflow-wrap: anywhere; font-family: Consolas, 'Courier New', monospace; }\n";
-  body += "    a { color: #000080; font-weight: 700; }\n";
-  body += "    .note { margin-top: 0.75rem; }\n";
-  body += "  </style>\n";
+  body += "  <link rel=\"stylesheet\" href=\"/setup.css\">\n";
   body += "</head>\n";
   body += "<body>\n";
   body += "  <main class=\"card\">\n";
@@ -270,6 +333,11 @@ String setupRootPageHtml() {
   return body;
 }
 
+void handleSetupCss() {
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send(200, "text/css", kSetupCss);
+}
+
 void handleSetupRoot() {
   const String body = setupRootPageHtml();
 
@@ -293,6 +361,7 @@ void startSetupHttpServer(Stream &out) {
    */
   if (!setupHttpRoutesConfigured) {
     setupServer.on("/", HTTP_GET, handleSetupRoot);
+    setupServer.on("/setup.css", HTTP_GET, handleSetupCss);
     setupServer.on("/status", HTTP_GET, handleSetupStatus);
     setupServer.onNotFound(handleSetupNotFound);
     setupHttpRoutesConfigured = true;
