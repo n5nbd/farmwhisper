@@ -43,6 +43,7 @@ cad/
 docs/
   dev-environment.md
   heltec-v4-pinmap.md
+  setup-ap.md
 
 firmware/
   include/
@@ -181,6 +182,27 @@ Questionable samples are treated as shady, marked with `~` in verbose output, an
 Timeouts are counted separately and do not overwrite the last valid distance.
 
 The current stability window uses five valid samples and reports stable when the sample span is within the configured limit.
+
+## Setup AP and Optional Local PIN
+
+FarmWhisper setup is local-first. WiFi remains off at boot, and the device can
+start a temporary setup AP only when requested. The setup AP is reached at:
+
+    http://10.10.10.10/
+
+The local setup PIN is optional:
+
+    No PIN stored -> setup opens directly
+    PIN stored    -> setup asks for the PIN first
+
+On the unlocked setup page, saving a 6-digit PIN stores it in ESP32 NVS. Saving
+a blank PIN clears it. If the PIN is forgotten, the physical recovery gesture
+clears the stored PIN:
+
+    Hold button until LED flashes red five times (~10 seconds).
+
+See [`docs/setup-ap.md`](docs/setup-ap.md) for the setup AP, optional PIN,
+recovery, and serial bench workflow.
 
 ## Building Firmware
 
