@@ -552,13 +552,6 @@ String setupRootPageHtml(
       </dl>
 
       <section class="fw-section" aria-labelledby="fw-lock-title">
-        <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
-        <p class="fw-note">Local setup PIN is optional. If no PIN is saved, setup opens directly.</p>
-        <ul class="fw-action-list">
-          <li>PIN status is shown in setup status JSON.</li>
-          <li>No stored PIN means setup opens directly.</li>
-          <li>Physical recovery reset: Hold button until LED flashes red five times (~10 seconds).</li>
-        </ul>
 
 )HTML";
 
