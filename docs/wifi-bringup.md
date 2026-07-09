@@ -34,6 +34,8 @@ Expected start output includes:
 
 Press `a` again to stop the AP and return WiFi OFF.
 
+The AP smoke test has a 5-minute timeout. If left active, firmware stops the AP automatically and returns WiFi OFF.
+
 ### `x` — WiFi status
 
 Prints the current WiFi radio mode and status without changing WiFi state.
@@ -78,12 +80,13 @@ After any WiFi change:
     GPIO37/38/39/40 smoke diagnostic still works.
     a toggles AP smoke mode manually.
     x reports WiFi state without changing it.
+    AP smoke timeout returns WiFi OFF after 5 minutes.
     w scans only when manually pressed.
     After w completes, WiFi returns to OFF.
 
 ## Next intended slices
 
-1. Manual AP off timeout.
+1. Minimal captive portal page served only after manual command.
 2. Minimal captive portal page served only after manual command.
 3. Minimal captive portal page served only after manual command.
 4. Credential-entry UI.

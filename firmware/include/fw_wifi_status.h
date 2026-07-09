@@ -25,6 +25,13 @@ void begin();
 void printStatus(Stream &out);
 
 /*
+ * Enforce WiFi diagnostic timeouts.
+ *
+ * This must not start WiFi, scan, connect, or run portal behavior.
+ */
+void service(Stream &out);
+
+/*
  * Run one synchronous scan, print results, delete scan data, then force WiFi
  * back OFF. This is a manual diagnostic only.
  */

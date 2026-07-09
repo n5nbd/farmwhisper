@@ -40,6 +40,7 @@ void setup() {
 }
 
 void loop() {
+  FWWiFiStatus::service(Serial);
   FWSerialDiag::handleCommands();
   FWButton::update();
   FWToF::poll();

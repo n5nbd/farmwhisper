@@ -36,3 +36,10 @@ This command proves the ESP32 can advertise a setup network. It must not start a
 Press `a` once to start the AP. Press `a` again to stop it.
 
 If `w` is run while AP smoke mode is active, the scan command tears the AP down and returns WiFi to OFF after scanning.
+
+
+## AP smoke timeout
+
+The AP smoke test times out automatically after 5 minutes.
+
+When the timeout fires, firmware stops the AP and returns WiFi OFF. This prevents `FarmWhisper-Setup` from being left broadcasting indefinitely during bench testing.

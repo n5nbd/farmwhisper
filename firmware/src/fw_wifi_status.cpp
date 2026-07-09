@@ -8,6 +8,9 @@ constexpr const char *kApSmokeSsid = "FarmWhisper-Setup";
 constexpr uint8_t kApSmokeChannel = 6;
 constexpr uint8_t kApSmokeMaxClients = 2;
 
+// Manual AP smoke-test timeout target. Shutdown behavior comes in the next slice.
+constexpr uint32_t kApSmokeTimeoutMs = 5UL * 60UL * 1000UL;
+
 /*
  * FarmWhisper setup AP address.
  *
@@ -20,6 +23,7 @@ const IPAddress kApSmokeGateway(10, 10, 10, 10);
 const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
 bool apSmokeActive = false;
+uint32_t apSmokeStartedMs = 0;
 
 const char *wifiModeText(wifi_mode_t mode) {
   switch (mode) {
@@ -80,6 +84,7 @@ void forceWifiOff() {
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_OFF);
   apSmokeActive = false;
+  apSmokeStartedMs = 0;
 }
 
 void printApStatus(Stream &out) {
@@ -94,7 +99,11 @@ void printApStatus(Stream &out) {
   out.print(" ch=");
   out.print(kApSmokeChannel);
   out.print(" stations=");
-  out.println(WiFi.softAPgetStationNum());
+  out.print(WiFi.softAPgetStationNum());
+  out.print(" ageS=");
+  out.print((millis() - apSmokeStartedMs) / 1000UL);
+  out.print(" timeoutS=");
+  out.println(kApSmokeTimeoutMs / 1000UL);
 }
 
 } // namespace
@@ -131,6 +140,21 @@ void printStatus(Stream &out) {
   out.println(apSmokeActive ? "ON" : "OFF");
 
   printApStatus(out);
+}
+
+void service(Stream &out) {
+  if (!apSmokeActive) {
+    return;
+  }
+
+  if ((millis() - apSmokeStartedMs) < kApSmokeTimeoutMs) {
+    return;
+  }
+
+  out.println();
+  out.println("[wifi] AP smoke timeout; stopping AP");
+  forceWifiOff();
+  printStatus(out);
 }
 
 void scanOnce(Stream &out) {
@@ -225,6 +249,7 @@ void toggleApSmoke(Stream &out) {
   }
 
   apSmokeActive = true;
+  apSmokeStartedMs = millis();
 
   out.println("[wifi] AP smoke start");
   out.println("[wifi] no web server, no DNS, no captive portal, no credentials");
