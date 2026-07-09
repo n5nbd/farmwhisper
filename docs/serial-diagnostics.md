@@ -29,7 +29,7 @@ Adding a new command must not change behavior of existing commands or boot-time 
 
 ## Manual AP smoke test
 
-`a` toggles a temporary open SoftAP named `FarmWhisper-Setup`.
+`a` toggles a temporary open SoftAP named `FarmWhisper-Setup` at `10.10.10.10`.
 
 This command proves the ESP32 can advertise a setup network. It must not start a web server, DNS server, captive portal, credential entry UI, or credential storage.
 

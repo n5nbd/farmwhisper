@@ -21,7 +21,7 @@ The firmware does not:
 
 ### `a` — WiFi AP smoke test
 
-Toggles a temporary open SoftAP named `FarmWhisper-Setup`.
+Toggles a temporary open SoftAP named `FarmWhisper-Setup` at `10.10.10.10`.
 
 This is only a radio smoke test. It does not start a web server, DNS server, captive portal, credential UI, or credential storage.
 
@@ -30,6 +30,7 @@ Expected start output includes:
     [wifi] AP smoke start
     [wifi] no web server, no DNS, no captive portal, no credentials
     [wifi] mode=AP
+    [wifi] ap ssid="FarmWhisper-Setup" ip=10.10.10.10
 
 Press `a` again to stop the AP and return WiFi OFF.
 

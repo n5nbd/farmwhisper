@@ -8,6 +8,17 @@ constexpr const char *kApSmokeSsid = "FarmWhisper-Setup";
 constexpr uint8_t kApSmokeChannel = 6;
 constexpr uint8_t kApSmokeMaxClients = 2;
 
+/*
+ * FarmWhisper setup AP address.
+ *
+ * Keep this explicit instead of relying on the ESP32 Arduino default
+ * 192.168.4.1 address. Future captive-portal and setup UI work should build
+ * on this address contract.
+ */
+const IPAddress kApSmokeIp(10, 10, 10, 10);
+const IPAddress kApSmokeGateway(10, 10, 10, 10);
+const IPAddress kApSmokeNetmask(255, 255, 255, 0);
+
 bool apSmokeActive = false;
 
 const char *wifiModeText(wifi_mode_t mode) {
@@ -191,6 +202,13 @@ void toggleApSmoke(Stream &out) {
   WiFi.scanDelete();
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_AP);
+
+  if (!WiFi.softAPConfig(kApSmokeIp, kApSmokeGateway, kApSmokeNetmask)) {
+    out.println("[wifi] AP smoke config failed");
+    forceWifiOff();
+    printStatus(out);
+    return;
+  }
 
   const bool started = WiFi.softAP(
       kApSmokeSsid,
