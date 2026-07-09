@@ -34,4 +34,13 @@ uint8_t pendingShortPresses();
  */
 bool consumeTriplePressEvent();
 
+/*
+ * Return true once for a deliberate setup recovery hold.
+ *
+ * This is intentionally separate from the existing long-press event so
+ * destructive/recovery actions can require a much longer hold without
+ * changing the validated long-press timing.
+ */
+bool consumeRecoveryHoldEvent();
+
 }  // namespace FWButton

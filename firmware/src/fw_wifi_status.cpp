@@ -425,4 +425,28 @@ void toggleApSmoke(Stream &out) {
   startApSetup(out);
 }
 
+
+bool resetSetupPinToFactoryDefault(Stream &out) {
+  out.println();
+
+  if (!apSmokeActive) {
+    out.println("[wifi] setup PIN reset ignored; setup AP is OFF");
+    printStatus(out);
+    return false;
+  }
+
+  if (!FWWiFiSetupWeb::resetPinToDefault()) {
+    out.println("[wifi] setup PIN reset failed");
+    printStatus(out);
+    return false;
+  }
+
+  apSmokeStartedMs = millis();
+
+  out.println("[wifi] setup PIN reset to factory default 123456");
+  out.println("[wifi] setup session locked; AP timeout refreshed");
+  printStatus(out);
+  return true;
+}
+
 } // namespace FWWiFiStatus

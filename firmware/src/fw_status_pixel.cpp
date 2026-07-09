@@ -37,6 +37,17 @@ void clearButtonOverlay() {
   buttonFlashUntilMs = 0;
 }
 
+void flashRed(uint8_t count, uint32_t onMs, uint32_t offMs) {
+  clearButtonOverlay();
+
+  for (uint8_t i = 0; i < count; ++i) {
+    setPixel(45, 0, 0);
+    delay(onMs);
+    setPixel(0, 0, 0);
+    delay(offMs);
+  }
+}
+
 void update(ComponentStatus componentStatus) {
   const uint32_t now = millis();
 

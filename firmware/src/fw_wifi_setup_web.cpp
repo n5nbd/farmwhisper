@@ -595,4 +595,15 @@ void resetSession() {
   setupPinNoticePending = false;
 }
 
+bool resetPinToDefault() {
+  if (!saveSetupPinToNvs(kDefaultSetupPin)) {
+    return false;
+  }
+
+  resetSetupPinToDefault();
+  setupUnlocked = false;
+  setupPinNoticePending = false;
+  return true;
+}
+
 }  // namespace FWWiFiSetupWeb

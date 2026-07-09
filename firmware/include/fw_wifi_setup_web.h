@@ -50,4 +50,7 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider);
  */
 void resetSession();
 
+/* Reset the stored setup PIN to the factory/default PIN. */
+bool resetPinToDefault();
+
 }  // namespace FWWiFiSetupWeb

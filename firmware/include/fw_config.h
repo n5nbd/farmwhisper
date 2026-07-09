@@ -21,6 +21,7 @@ static constexpr uint32_t ButtonMultiPressGapMs = 450;
 
 static constexpr uint32_t ButtonShortFlashMs = 150;
 static constexpr uint32_t ButtonLongFlashMs = 450;
+static constexpr uint32_t SetupPinRecoveryHoldMs = 10000;
 static constexpr uint32_t ButtonMultiFlashMs = 350;
 
 static constexpr uint32_t HeartbeatMs = 1000;

@@ -20,4 +20,7 @@ void update(ComponentStatus componentStatus);
 void triggerButtonOverlay(ButtonOverlay overlay, uint32_t durationMs);
 void clearButtonOverlay();
 
+/* Blocking confirmation pattern for rare recovery actions. */
+void flashRed(uint8_t count, uint32_t onMs, uint32_t offMs);
+
 }  // namespace FWStatusPixel

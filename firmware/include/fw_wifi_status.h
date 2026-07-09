@@ -65,4 +65,12 @@ void refreshApSetupTimeout(Stream &out);
  */
 void toggleApSmoke(Stream &out);
 
+/*
+ * Reset the stored local setup PIN to the factory/default value.
+ *
+ * This only succeeds while the setup AP is active. It is intended for
+ * the deliberate physical recovery gesture.
+ */
+bool resetSetupPinToFactoryDefault(Stream &out);
+
 } // namespace FWWiFiStatus

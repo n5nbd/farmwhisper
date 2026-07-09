@@ -18,9 +18,11 @@ uint32_t buttonLongPressCount = 0;
 uint32_t buttonDoublePressCount = 0;
 uint32_t buttonTriplePressCount = 0;
 bool triplePressEventPending = false;
+bool recoveryHoldEventPending = false;
 
 uint32_t buttonPressedAtMs = 0;
 bool buttonLongPressReported = false;
+bool buttonRecoveryHoldReported = false;
 
 uint8_t buttonPendingShortPresses = 0;
 uint32_t lastShortPressReleaseMs = 0;
@@ -131,6 +133,7 @@ void update() {
       buttonPressCount++;
       buttonPressedAtMs = now;
       buttonLongPressReported = false;
+      buttonRecoveryHoldReported = false;
       FWStatusPixel::triggerButtonOverlay(ButtonOverlay::ShortPress, FWConfig::ButtonShortFlashMs);
 
       printButtonEventCounters();
@@ -177,6 +180,19 @@ void update() {
     }
   }
 
+  if (debouncedButton == LOW && !buttonRecoveryHoldReported) {
+    const uint32_t heldMs = now - buttonPressedAtMs;
+    if (heldMs >= FWConfig::SetupPinRecoveryHoldMs) {
+      buttonRecoveryHoldReported = true;
+      recoveryHoldEventPending = true;
+      buttonPendingShortPresses = 0;
+      Serial.print("[button] recoveryHold heldMs=");
+      Serial.print(heldMs);
+      printButtonEventCounters();
+      Serial.println();
+    }
+  }
+
   finishPendingShortPressSequenceIfReady(now);
 }
 
@@ -190,10 +206,12 @@ void resetDiagnostics() {
   buttonDoublePressCount = 0;
   buttonTriplePressCount = 0;
   triplePressEventPending = false;
+  recoveryHoldEventPending = false;
 
   buttonPendingShortPresses = 0;
   lastShortPressReleaseMs = 0;
   buttonLongPressReported = false;
+  buttonRecoveryHoldReported = false;
 }
 
 uint32_t rawIrqCount() {
@@ -229,6 +247,16 @@ bool consumeTriplePressEvent() {
   }
 
   triplePressEventPending = false;
+  return true;
+}
+
+
+bool consumeRecoveryHoldEvent() {
+  if (!recoveryHoldEventPending) {
+    return false;
+  }
+
+  recoveryHoldEventPending = false;
   return true;
 }
 

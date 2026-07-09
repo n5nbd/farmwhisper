@@ -44,6 +44,12 @@ void loop() {
   FWSerialDiag::handleCommands();
   FWButton::update();
 
+  if (FWButton::consumeRecoveryHoldEvent()) {
+    if (FWWiFiStatus::resetSetupPinToFactoryDefault(Serial)) {
+      FWStatusPixel::flashRed(5, 150, 150);
+    }
+  }
+
   if (FWButton::consumeTriplePressEvent()) {
     FWWiFiStatus::startApSetup(Serial);
   }
