@@ -505,53 +505,6 @@ String setupRootPageHtml(
     <div class="fw-content">
       <p class="fw-intro">FarmWhisper setup server is running.</p>
 
-      <dl class="fw-status-grid">
-        <dt>AP smoke/setup</dt>
-        <dd>)HTML";
-  body += status.apSmokeActive ? "ON" : "OFF";
-  body += R"HTML(</dd>
-        <dt>Setup HTTP</dt>
-        <dd>)HTML";
-  body += status.setupHttpActive ? "ON" : "OFF";
-  body += R"HTML(</dd>
-        <dt>Setup lock</dt>
-        <dd>)HTML";
-  body += setupLockStateText();
-  body += R"HTML(</dd>
-        <dt>Device ID</dt>
-        <dd>)HTML";
-  body += status.deviceId;
-  body += R"HTML(</dd>
-        <dt>Device alias</dt>
-        <dd>)HTML";
-  appendHtmlEscapedString(body, fwDeviceAlias());
-  body += R"HTML(</dd>
-        <dt>SSID</dt>
-        <dd>)HTML";
-  body += status.ssid;
-  body += R"HTML(</dd>
-        <dt>IP</dt>
-        <dd>)HTML";
-  body += status.ip.toString();
-  body += R"HTML(</dd>
-        <dt>Stations</dt>
-        <dd>)HTML";
-  body += String(static_cast<unsigned int>(status.stations));
-  body += R"HTML(</dd>
-        <dt>Age</dt>
-        <dd>)HTML";
-  body += String(status.ageS);
-  body += R"HTML( s</dd>
-        <dt>Timeout</dt>
-        <dd>)HTML";
-  body += String(status.timeoutS);
-  body += R"HTML( s</dd>
-        <dt>Remaining</dt>
-        <dd>)HTML";
-  body += String(status.remainingS);
-  body += R"HTML( s</dd>
-      </dl>
-
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
 )HTML";
@@ -620,6 +573,59 @@ String setupRootPageHtml(
       <p class="fw-actions">
         <a class="fw-link" href="/status">View setup status JSON</a>
       </p>
+
+      <section class="fw-section" aria-labelledby="fw-device-status-title">
+        <h2 class="fw-section-title" id="fw-device-status-title">Device status</h2>
+
+      <dl class="fw-status-grid">
+        <dt>AP smoke/setup</dt>
+        <dd>)HTML";
+  body += status.apSmokeActive ? "ON" : "OFF";
+  body += R"HTML(</dd>
+        <dt>Setup HTTP</dt>
+        <dd>)HTML";
+  body += status.setupHttpActive ? "ON" : "OFF";
+  body += R"HTML(</dd>
+        <dt>Setup lock</dt>
+        <dd>)HTML";
+  body += setupLockStateText();
+  body += R"HTML(</dd>
+        <dt>Device ID</dt>
+        <dd>)HTML";
+  body += status.deviceId;
+  body += R"HTML(</dd>
+        <dt>Device alias</dt>
+        <dd>)HTML";
+  appendHtmlEscapedString(body, fwDeviceAlias());
+  body += R"HTML(</dd>
+        <dt>SSID</dt>
+        <dd>)HTML";
+  body += status.ssid;
+  body += R"HTML(</dd>
+        <dt>IP</dt>
+        <dd>)HTML";
+  body += status.ip.toString();
+  body += R"HTML(</dd>
+        <dt>Stations</dt>
+        <dd>)HTML";
+  body += String(static_cast<unsigned int>(status.stations));
+  body += R"HTML(</dd>
+        <dt>Age</dt>
+        <dd>)HTML";
+  body += String(status.ageS);
+  body += R"HTML( s</dd>
+        <dt>Timeout</dt>
+        <dd>)HTML";
+  body += String(status.timeoutS);
+  body += R"HTML( s</dd>
+        <dt>Remaining</dt>
+        <dd>)HTML";
+  body += String(status.remainingS);
+  body += R"HTML( s</dd>
+      </dl>
+
+      </section>
+
     </div>
   </main>
 </body>
