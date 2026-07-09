@@ -45,7 +45,7 @@ void loop() {
   FWButton::update();
 
   if (FWButton::consumeRecoveryHoldEvent()) {
-    if (FWWiFiStatus::resetSetupPinToFactoryDefault(Serial)) {
+    if (FWWiFiStatus::clearSetupPinWithRecovery(Serial)) {
       FWStatusPixel::flashRed(5, 150, 150);
     }
   }

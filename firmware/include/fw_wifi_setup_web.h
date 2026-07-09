@@ -10,8 +10,8 @@
  * - /status
  *
  * This module does not start/stop WiFi, own AP timeout policy, scan networks,
- * store credentials, or perform captive-portal behavior. The WiFi status
- * module owns setup/AP state and provides a read-only snapshot callback.
+ * store network credentials, or perform captive-portal behavior. The WiFi
+ * status module owns setup/AP state and provides a read-only snapshot callback.
  */
 
 #include <Arduino.h>
@@ -46,11 +46,11 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider);
  * Clear the current setup unlock state.
  *
  * WiFi/AP lifecycle code calls this whenever the setup HTTP server/AP stops so
- * a future setup session starts locked again without changing the stored PIN.
+ * a future setup session starts from the correct PIN/no-PIN state.
  */
 void resetSession();
 
-/* Reset the stored setup PIN to the factory/default PIN. */
-bool resetPinToDefault();
+/* Clear the stored setup PIN so setup opens directly again. */
+bool clearStoredPin();
 
 }  // namespace FWWiFiSetupWeb

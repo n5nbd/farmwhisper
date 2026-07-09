@@ -2,25 +2,29 @@
 
 #include <Preferences.h>
 
+#include <cstring>
+
 namespace {
 
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
-constexpr const char *kDefaultSetupPin = "123456";
+constexpr uint8_t kSetupPinDigits = 6;
 constexpr const char *kSetupPrefsNamespace = "fw_setup";
 constexpr const char *kSetupPinKey = "pin";
 
-char setupPin[7] = "123456";
+char setupPin[kSetupPinDigits + 1] = "";
+bool setupPinConfigured = false;
 bool setupUnlocked = false;
-bool setupPinNoticePending = false;
+bool setupPinSavedNoticePending = false;
+bool setupPinClearedNoticePending = false;
 
 bool isSixDigitPin(const String &pin) {
-  if (pin.length() != 6) {
+  if (pin.length() != kSetupPinDigits) {
     return false;
   }
 
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kSetupPinDigits; ++i) {
     if (!isDigit(pin[i])) {
       return false;
     }
@@ -29,9 +33,10 @@ bool isSixDigitPin(const String &pin) {
   return true;
 }
 
-void resetSetupPinToDefault() {
-  strncpy(setupPin, kDefaultSetupPin, sizeof(setupPin));
-  setupPin[sizeof(setupPin) - 1] = '\0';
+void clearSetupPinFromRam() {
+  setupPin[0] = '\0';
+  setupPinConfigured = false;
+  setupUnlocked = false;
 }
 
 bool saveSetupPinToNvs(const char *pin) {
@@ -47,23 +52,43 @@ bool saveSetupPinToNvs(const char *pin) {
   return written > 0;
 }
 
-void loadSetupPinFromNvs() {
+bool clearSetupPinFromNvs() {
   Preferences prefs;
 
-  if (!prefs.begin(kSetupPrefsNamespace, true)) {
-    resetSetupPinToDefault();
+  if (!prefs.begin(kSetupPrefsNamespace, false)) {
+    return false;
+  }
+
+  prefs.remove(kSetupPinKey);
+  prefs.end();
+
+  return true;
+}
+
+void loadSetupPinFromNvs() {
+  clearSetupPinFromRam();
+
+  Preferences prefs;
+
+  if (!prefs.begin(kSetupPrefsNamespace, false)) {
     return;
   }
 
   const String storedPin = prefs.getString(kSetupPinKey, "");
-  prefs.end();
 
-  if (!isSixDigitPin(storedPin)) {
-    resetSetupPinToDefault();
+  if (isSixDigitPin(storedPin)) {
+    storedPin.toCharArray(setupPin, sizeof(setupPin));
+    setupPinConfigured = true;
+    setupUnlocked = false;
+    prefs.end();
     return;
   }
 
-  storedPin.toCharArray(setupPin, sizeof(setupPin));
+  if (storedPin.length() > 0) {
+    prefs.remove(kSetupPinKey);
+  }
+
+  prefs.end();
 }
 
 constexpr const char *kSetupCss = R"CSS(
@@ -251,6 +276,14 @@ void redirectToRoot() {
   setupServer->send(303, "text/plain", "");
 }
 
+const char *setupLockStateText() {
+  if (!setupPinConfigured) {
+    return "OPEN";
+  }
+
+  return setupUnlocked ? "UNLOCKED" : "LOCKED";
+}
+
 String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPin) {
   String body;
   body.reserve(2200);
@@ -279,7 +312,7 @@ String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPi
   body += R"HTML(
       <section class="fw-section" aria-labelledby="fw-unlock-title">
         <h2 class="fw-section-title" id="fw-unlock-title">Local setup lock</h2>
-        <p class="fw-note">Factory/default PIN: 123456</p>
+        <p class="fw-note">A local setup PIN is configured on this device.</p>
 
         <form class="fw-form" method="post" action="/unlock">
           <div class="fw-field">
@@ -329,16 +362,19 @@ void handleSetupCss() {
   setupServer->send(200, "text/css", kSetupCss);
 }
 
-String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *pinMessage = nullptr, bool pinError = false) {
+String setupRootPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status,
+    const char *pinMessage = nullptr,
+    bool pinError = false) {
   /*
-   * Server-render the setup page.
+   * Setup PINs are optional.
    *
-   * This slice persists setup PIN changes in NVS.
-   * It does not add general config storage, JavaScript, DNS,
-   * captive-portal behavior, or saved setup changes beyond the setup PIN.
+   * If no PIN is stored in NVS, setup opens directly. If a PIN is stored,
+   * setup starts locked until the PIN is entered. Saving an empty PIN clears
+   * the stored PIN and returns setup to the open/default state.
    */
   String body;
-  body.reserve(3200);
+  body.reserve(3400);
 
   body += R"HTML(<!doctype html>
 <html lang="en">
@@ -365,7 +401,7 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
   body += R"HTML(</dd>
         <dt>Setup lock</dt>
         <dd>)HTML";
-  body += setupUnlocked ? "UNLOCKED" : "LOCKED";
+  body += setupLockStateText();
   body += R"HTML(</dd>
         <dt>Device ID</dt>
         <dd>)HTML";
@@ -399,10 +435,10 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
 
       <section class="fw-section" aria-labelledby="fw-lock-title">
         <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
-        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops. PIN changes are saved in local device storage.</p>
+        <p class="fw-note">Local setup PIN is optional. If no PIN is saved, setup opens directly.</p>
         <ul class="fw-action-list">
-          <li>Current PIN: saved device value</li>
-          <li>Factory/default PIN: 123456</li>
+          <li>PIN status is shown in setup status JSON.</li>
+          <li>No stored PIN means setup opens directly.</li>
           <li>Physical recovery reset: Hold button until LED flashes red five times (~10 seconds).</li>
         </ul>
 
@@ -421,10 +457,10 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
             <label class="fw-label" for="fw-new-pin">New setup PIN</label>
             <input class="fw-input" id="fw-new-pin" name="pin" type="password"
                    inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-                   autocomplete="off" required>
+                   autocomplete="off" placeholder="leave blank to clear">
           </div>
 
-          <button class="fw-button" type="submit">Change setup PIN</button>
+          <button class="fw-button" type="submit">Save setup PIN</button>
         </form>
       </section>
 
@@ -439,7 +475,7 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
         </ul>
       </section>
 
-      <p class="fw-note">This page is still read-only. No setup changes are saved in this slice.</p>
+      <p class="fw-note">This page is still read-only except for local setup PIN management.</p>
 
       <p class="fw-actions">
         <a class="fw-link" href="/status">View setup status JSON</a>
@@ -457,12 +493,15 @@ void handleSetupRoot() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  if (setupUnlocked) {
+  if (!setupPinConfigured || setupUnlocked) {
     const char *pinMessage = nullptr;
 
-    if (setupPinNoticePending) {
-      pinMessage = "PIN changed and saved. Future setup sessions will require the new PIN.";
-      setupPinNoticePending = false;
+    if (setupPinSavedNoticePending) {
+      pinMessage = "PIN saved. Future setup sessions will require it.";
+      setupPinSavedNoticePending = false;
+    } else if (setupPinClearedNoticePending) {
+      pinMessage = "PIN cleared. Setup will open directly until a new PIN is saved.";
+      setupPinClearedNoticePending = false;
     }
 
     body = setupRootPageHtml(status, pinMessage, false);
@@ -475,6 +514,11 @@ void handleSetupRoot() {
 }
 
 void handleSetupUnlock() {
+  if (!setupPinConfigured) {
+    redirectToRoot();
+    return;
+  }
+
   const String pin = setupServer->arg("pin");
 
   if (pin == setupPin) {
@@ -489,7 +533,7 @@ void handleSetupUnlock() {
 }
 
 void handleSetupPinChange() {
-  if (!setupUnlocked) {
+  if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(403, "text/plain", "FarmWhisper setup is locked");
     return;
@@ -497,9 +541,24 @@ void handleSetupPinChange() {
 
   const String pin = setupServer->arg("pin");
 
+  if (pin.length() == 0) {
+    if (!clearSetupPinFromNvs()) {
+      const String body = setupRootPageHtml(
+          currentStatus(), "Could not clear PIN from device storage.", true);
+      sendNoStore();
+      setupServer->send(500, "text/html", body);
+      return;
+    }
+
+    clearSetupPinFromRam();
+    setupPinClearedNoticePending = true;
+    redirectToRoot();
+    return;
+  }
+
   if (!isSixDigitPin(pin)) {
     const String body = setupRootPageHtml(
-        currentStatus(), "PIN must be exactly 6 digits.", true);
+        currentStatus(), "PIN must be blank or exactly 6 digits.", true);
     sendNoStore();
     setupServer->send(400, "text/html", body);
     return;
@@ -518,7 +577,9 @@ void handleSetupPinChange() {
 
   strncpy(setupPin, newPin, sizeof(setupPin));
   setupPin[sizeof(setupPin) - 1] = '\0';
-  setupPinNoticePending = true;
+  setupPinConfigured = true;
+  setupUnlocked = true;
+  setupPinSavedNoticePending = true;
   redirectToRoot();
 }
 
@@ -529,9 +590,11 @@ void handleSetupStatus() {
    * model exists.
    */
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
+  const bool setupEffectiveUnlocked = (!setupPinConfigured) || setupUnlocked;
+  const bool setupLocked = setupPinConfigured && !setupUnlocked;
 
   String body;
-  body.reserve(560);
+  body.reserve(640);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
@@ -540,13 +603,16 @@ void handleSetupStatus() {
   body += status.setupHttpActive ? "true" : "false";
   body += ",\n";
   body += "  \"setupUnlocked\": ";
-  body += setupUnlocked ? "true" : "false";
+  body += setupEffectiveUnlocked ? "true" : "false";
   body += ",\n";
-  body += "  \"setupPinStorage\": \"nvs\",\n";
-  body += "  \"setupPinFactoryDefault\": \"";
-  body += kDefaultSetupPin;
-  body += "\",\n";
-  body += "  \"setupPinRecovery\": \"button_hold_10s_while_setup_ap_active\",\n";
+  body += "  \"setupLocked\": ";
+  body += setupLocked ? "true" : "false";
+  body += ",\n";
+  body += "  \"setupPinConfigured\": ";
+  body += setupPinConfigured ? "true" : "false";
+  body += ",\n";
+  body += "  \"setupPinStorage\": \"nvs_optional\",\n";
+  body += "  \"setupPinRecovery\": \"button_hold_until_red_5_flashes\",\n";
   body += "  \"deviceId\": \"";
   body += status.deviceId;
   body += "\",\n";
@@ -597,17 +663,17 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
 
 void resetSession() {
   setupUnlocked = false;
-  setupPinNoticePending = false;
+  setupPinSavedNoticePending = false;
+  setupPinClearedNoticePending = false;
 }
 
-bool resetPinToDefault() {
-  if (!saveSetupPinToNvs(kDefaultSetupPin)) {
+bool clearStoredPin() {
+  if (!clearSetupPinFromNvs()) {
     return false;
   }
 
-  resetSetupPinToDefault();
-  setupUnlocked = false;
-  setupPinNoticePending = false;
+  clearSetupPinFromRam();
+  setupPinClearedNoticePending = true;
   return true;
 }
 

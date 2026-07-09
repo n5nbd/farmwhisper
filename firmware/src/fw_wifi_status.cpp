@@ -426,25 +426,25 @@ void toggleApSmoke(Stream &out) {
 }
 
 
-bool resetSetupPinToFactoryDefault(Stream &out) {
+bool clearSetupPinWithRecovery(Stream &out) {
   out.println();
 
   if (!apSmokeActive) {
-    out.println("[wifi] setup PIN reset ignored; setup AP is OFF");
+    out.println("[wifi] setup PIN clear ignored; setup AP is OFF");
     printStatus(out);
     return false;
   }
 
-  if (!FWWiFiSetupWeb::resetPinToDefault()) {
-    out.println("[wifi] setup PIN reset failed");
+  if (!FWWiFiSetupWeb::clearStoredPin()) {
+    out.println("[wifi] setup PIN clear failed");
     printStatus(out);
     return false;
   }
 
   apSmokeStartedMs = millis();
 
-  out.println("[wifi] setup PIN reset to factory default 123456");
-  out.println("[wifi] setup session locked; AP timeout refreshed");
+  out.println("[wifi] setup PIN cleared; setup now opens without a PIN");
+  out.println("[wifi] setup session opened; AP timeout refreshed");
   printStatus(out);
   return true;
 }
