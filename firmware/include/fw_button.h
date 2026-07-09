@@ -26,4 +26,12 @@ uint32_t doublePressCount();
 uint32_t triplePressCount();
 uint8_t pendingShortPresses();
 
+/*
+ * Return true once for each debounced triple-press event.
+ *
+ * This lets main.cpp orchestrate app behavior from button events without
+ * making the button module know about WiFi, setup mode, or other subsystems.
+ */
+bool consumeTriplePressEvent();
+
 }  // namespace FWButton

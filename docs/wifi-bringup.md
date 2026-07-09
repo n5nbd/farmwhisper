@@ -124,3 +124,15 @@ This is not a captive portal yet. There is no DNS redirect, credential form,
 credential storage, STA connection attempt, or boot-time WiFi behavior in this
 slice. The HTTP server is stopped whenever AP smoke/setup mode is stopped,
 including the manual `a` stop path and the AP smoke timeout path.
+
+## Triple press setup AP
+
+A debounced button triple press starts the manual setup AP and placeholder HTTP
+server. If setup AP mode is already active, another triple press refreshes the
+5-minute AP/setup timeout instead of stopping the AP.
+
+Serial command `a` remains the bench diagnostic toggle. It can still stop the
+AP manually.
+
+Future successful setup/config saves should refresh the same 5-minute timer.
+Failed saves should not refresh the timer.

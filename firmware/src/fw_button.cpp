@@ -17,6 +17,7 @@ uint32_t buttonPressCount = 0;
 uint32_t buttonLongPressCount = 0;
 uint32_t buttonDoublePressCount = 0;
 uint32_t buttonTriplePressCount = 0;
+bool triplePressEventPending = false;
 
 uint32_t buttonPressedAtMs = 0;
 bool buttonLongPressReported = false;
@@ -54,6 +55,7 @@ void fireDoublePressEvent() {
 
 void fireTriplePressEvent() {
   buttonTriplePressCount++;
+  triplePressEventPending = true;
   FWStatusPixel::triggerButtonOverlay(ButtonOverlay::TriplePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] triplePress");
@@ -187,6 +189,7 @@ void resetDiagnostics() {
   buttonLongPressCount = 0;
   buttonDoublePressCount = 0;
   buttonTriplePressCount = 0;
+  triplePressEventPending = false;
 
   buttonPendingShortPresses = 0;
   lastShortPressReleaseMs = 0;
@@ -218,6 +221,15 @@ uint32_t triplePressCount() {
 
 uint8_t pendingShortPresses() {
   return buttonPendingShortPresses;
+}
+
+bool consumeTriplePressEvent() {
+  if (!triplePressEventPending) {
+    return false;
+  }
+
+  triplePressEventPending = false;
+  return true;
 }
 
 }  // namespace FWButton

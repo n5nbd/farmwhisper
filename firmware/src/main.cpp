@@ -43,6 +43,11 @@ void loop() {
   FWWiFiStatus::service(Serial);
   FWSerialDiag::handleCommands();
   FWButton::update();
+
+  if (FWButton::consumeTriplePressEvent()) {
+    FWWiFiStatus::startApSetup(Serial);
+  }
+
   FWToF::poll();
   FWStatusPixel::update(FWToF::status());
   FWSerialDiag::printHeartbeat();

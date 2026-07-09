@@ -52,3 +52,11 @@ the firmware serves a placeholder page at `http://10.10.10.10/`.
 The placeholder server exists only for the lifetime of AP smoke/setup mode.
 There is no DNS server, captive portal redirect, credential entry, credential
 storage, or automatic WiFi behavior in this slice.
+
+## Button setup shortcut
+
+A debounced button triple press starts the WiFi setup AP and placeholder HTTP
+server. If setup mode is already active, triple press refreshes the 5-minute
+setup timeout.
+
+Serial command `a` remains the manual bench toggle for AP smoke/setup mode.

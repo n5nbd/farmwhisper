@@ -107,7 +107,7 @@ void printBootBanner() {
   Serial.println("[boot] USB CDC serial enabled");
   Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
   Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
-  Serial.println("[boot] Button events: short press, long press, double press, triple press");
+  Serial.println("[boot] Button events: short press, long press, double press, triple press starts/refreshes setup AP");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
   Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, a wifi AP, x wifi status, w wifi scan, r reset counters");
@@ -194,6 +194,7 @@ void printHelp() {
   Serial.println("[serial]   g       print GPIO37/38/39/40 smoke-test states");
   Serial.println("[serial]   v       toggle verbose per-sample ToF logging");
   Serial.println("[serial]   a       toggle WiFi AP smoke test");
+  Serial.println("[serial]   button triple press starts/refreshes WiFi setup AP");
   Serial.println("[serial]   x       print WiFi radio status without scanning");
   Serial.println("[serial]   w       scan WiFi networks, then return WiFi OFF");
   Serial.println("[serial]   r       reset runtime diagnostics");

@@ -41,6 +41,22 @@ void service(Stream &out);
 void scanOnce(Stream &out);
 
 /*
+ * Start manual setup AP/HTTP mode, or refresh its timeout if already active.
+ *
+ * This is intended for the physical UI path, such as a triple button press.
+ * Serial command `a` remains a bench diagnostic toggle.
+ */
+void startApSetup(Stream &out);
+
+/*
+ * Refresh the active setup AP timeout after useful setup progress.
+ *
+ * Future credential/config save handlers should call this only after a
+ * successful save. Failed saves should not extend the setup session.
+ */
+void refreshApSetupTimeout(Stream &out);
+
+/*
  * Toggle a manual SoftAP smoke test.
  *
  * This starts or stops only the ESP32 access point radio and its manual

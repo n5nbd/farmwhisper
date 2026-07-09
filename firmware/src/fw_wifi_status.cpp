@@ -42,6 +42,7 @@ WebServer setupServer(80);
 
 bool apSmokeActive = false;
 bool setupHttpActive = false;
+bool setupHttpRoutesConfigured = false;
 uint32_t apSmokeStartedMs = 0;
 
 const char *wifiModeText(wifi_mode_t mode) {
@@ -111,8 +112,12 @@ void startSetupHttpServer(Stream &out) {
    * can host a page at the setup address without adding DNS, redirect logic,
    * credential forms, NVS writes, or boot-time WiFi behavior.
    */
-  setupServer.on("/", HTTP_GET, handleSetupRoot);
-  setupServer.onNotFound(handleSetupNotFound);
+  if (!setupHttpRoutesConfigured) {
+    setupServer.on("/", HTTP_GET, handleSetupRoot);
+    setupServer.onNotFound(handleSetupNotFound);
+    setupHttpRoutesConfigured = true;
+  }
+
   setupServer.begin();
   setupHttpActive = true;
 
@@ -279,20 +284,20 @@ void scanOnce(Stream &out) {
   printStatus(out);
 }
 
-void toggleApSmoke(Stream &out) {
+void startApSetup(Stream &out) {
   out.println();
 
   if (apSmokeActive) {
-    out.println("[wifi] AP smoke stop");
-    forceWifiOff();
+    apSmokeStartedMs = millis();
+    out.println("[wifi] AP setup already active; timeout refreshed");
     printStatus(out);
     return;
   }
 
   /*
-   * Manual AP smoke test only. This proves the ESP32 can advertise and serve a
+   * Manual setup AP only. This proves the ESP32 can advertise and serve a
    * setup placeholder before any DNS, portal, credential, or storage logic is
-   * introduced.
+   * introduced. It is safe to call from the physical button path.
    */
   WiFi.persistent(false);
   WiFi.scanDelete();
@@ -327,6 +332,32 @@ void toggleApSmoke(Stream &out) {
   startSetupHttpServer(out);
   out.println("[wifi] no DNS, no captive portal, no credentials, no storage");
   printStatus(out);
+}
+
+void refreshApSetupTimeout(Stream &out) {
+  out.println();
+
+  if (!apSmokeActive) {
+    out.println("[wifi] AP setup timeout refresh ignored; AP is OFF");
+    printStatus(out);
+    return;
+  }
+
+  apSmokeStartedMs = millis();
+  out.println("[wifi] AP setup timeout refreshed");
+  printStatus(out);
+}
+
+void toggleApSmoke(Stream &out) {
+  if (apSmokeActive) {
+    out.println();
+    out.println("[wifi] AP smoke stop");
+    forceWifiOff();
+    printStatus(out);
+    return;
+  }
+
+  startApSetup(out);
 }
 
 } // namespace FWWiFiStatus
