@@ -1,10 +1,45 @@
 #include "fw_wifi_setup_web.h"
+#include "fw_device_config.h"
 
 #include <Preferences.h>
 
 #include <cstring>
 
 namespace {
+
+void appendJsonEscapedString(String &out, const char *value) {
+  if (value == nullptr) {
+    return;
+  }
+
+  for (const char *p = value; *p != '\0'; ++p) {
+    switch (*p) {
+    case '\\':
+      out += "\\\\";
+      break;
+    case '"':
+      out += "\\\"";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      if (static_cast<unsigned char>(*p) < 0x20) {
+        out += ' ';
+      } else {
+        out += *p;
+      }
+      break;
+    }
+  }
+}
+
 
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
@@ -679,6 +714,19 @@ void handleSetupStatus() {
   body += "}\n";
 
   sendNoStore();
+  int jsonEnd = body.lastIndexOf('}');
+  if (jsonEnd >= 0) {
+    int insertAt = jsonEnd;
+    if (insertAt > 0 && body.charAt(insertAt - 1) == '\n') {
+      --insertAt;
+    }
+
+    String aliasField = ",\n  \"deviceAlias\":\"";
+    appendJsonEscapedString(aliasField, fwDeviceAlias());
+    aliasField += "\"";
+    body = body.substring(0, insertAt) + aliasField + body.substring(insertAt);
+  }
+
   setupServer->send(200, "application/json", body);
 }
 
