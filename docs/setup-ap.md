@@ -119,3 +119,19 @@ Not implemented yet:
     Node role storage
     Radio profile storage
     Sensor calibration storage
+
+## Device alias
+
+The setup page includes a local **Device alias** field for a human-friendly name such as `Coop Feed`.
+
+Alias behavior:
+
+- The alias is stored in NVS.
+- The alias appears on the setup page.
+- The alias appears in `/status` JSON as `deviceAlias`.
+- The alias may be up to 32 printable characters.
+- Saving a blank alias clears the stored alias and restores the default: `FarmWhisper device`.
+- Alias editing is available only from the unlocked setup page.
+- If setup is protected by a local PIN, the alias remains read-only until setup is unlocked.
+
+The device alias is local product configuration. It does not change the device ID, setup SSID, MAC-derived suffix, or radio identity.
