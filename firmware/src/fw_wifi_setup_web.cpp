@@ -342,11 +342,11 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status) {
 
       <section class="fw-section" aria-labelledby="fw-lock-title">
         <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
-        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops.</p>
+        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops. PIN management is not saved in this slice.</p>
         <ul class="fw-action-list">
-          <li>Default PIN: 123456</li>
-          <li>Change setup PIN: not implemented</li>
-          <li>Physical recovery reset: not implemented</li>
+          <li>Current PIN: default 123456</li>
+          <li>Change PIN form: not implemented</li>
+          <li>Physical recovery reset: planned button gesture</li>
         </ul>
       </section>
 
