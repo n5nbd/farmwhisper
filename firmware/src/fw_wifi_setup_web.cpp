@@ -247,8 +247,9 @@ constexpr const char *kSetupCss = R"CSS(
 }
 
 .fw-section-title {
-  margin: 0;
-  font-size: 1rem;
+  margin: 0 0 0.9rem;
+  font-size: 1.75rem;
+  line-height: 1.15;
 }
 
 .fw-form {
