@@ -755,74 +755,55 @@ void handleSetupPinChange() {
 }
 
 void handleSetupStatus() {
-  /*
-   * Keep this dependency-free for now. A hand-built JSON response is enough
-   * for route validation and avoids pulling in a JSON library before the setup
-   * model exists.
-   */
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
-  const bool setupEffectiveUnlocked = (!setupPinConfigured) || setupUnlocked;
-  const bool setupLocked = setupPinConfigured && !setupUnlocked;
 
   String body;
-  body.reserve(640);
+  body.reserve(700);
+
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupHttp\": ";
+  body += ",\n  \"setupHttp\": ";
   body += status.setupHttpActive ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupUnlocked\": ";
-  body += setupEffectiveUnlocked ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupLocked\": ";
-  body += setupLocked ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupPinConfigured\": ";
+  body += ",\n  \"setupUnlocked\": ";
+  body += setupUnlocked ? "true" : "false";
+  body += ",\n  \"setupLocked\": ";
+  body += (setupPinConfigured && !setupUnlocked) ? "true" : "false";
+  body += ",\n  \"setupPinConfigured\": ";
   body += setupPinConfigured ? "true" : "false";
-  body += ",\n";
-  body += "  \"setupPinStorage\": \"nvs_optional\",\n";
-  body += "  \"setupPinRecovery\": \"button_hold_until_red_5_flashes\",\n";
-  body += "  \"deviceId\": \"";
+  body += ",\n  \"setupPinStorage\": \"nvs_optional\"";
+  body += ",\n  \"setupPinRecovery\": \"button_hold_until_red_5_flashes\"";
+
+  body += ",\n  \"deviceId\": \"";
   body += status.deviceId;
-  body += "\",\n";
-  body += "  \"ssid\": \"";
+  body += "\"";
+
+  body += ",\n  \"deviceAlias\": \"";
+  appendJsonEscapedString(body, fwDeviceAlias());
+  body += "\"";
+
+  body += ",\n  \"ssid\": \"";
   body += status.ssid;
-  body += "\",\n";
-  body += "  \"ip\": \"";
+  body += "\"";
+
+  body += ",\n  \"ip\": \"";
   body += status.ip.toString();
-  body += "\",\n";
-  body += "  \"stations\": ";
+  body += "\"";
+
+  body += ",\n  \"stations\": ";
   body += String(static_cast<unsigned int>(status.stations));
-  body += ",\n";
-  body += "  \"ageS\": ";
+  body += ",\n  \"ageS\": ";
   body += String(status.ageS);
-  body += ",\n";
-  body += "  \"timeoutS\": ";
+  body += ",\n  \"timeoutS\": ";
   body += String(status.timeoutS);
-  body += ",\n";
-  body += "  \"remainingS\": ";
+  body += ",\n  \"remainingS\": ";
   body += String(status.remainingS);
-  body += "\n";
-  body += "}\n";
+  body += "\n}\n";
 
   sendNoStore();
-  int jsonEnd = body.lastIndexOf('}');
-  if (jsonEnd >= 0) {
-    int insertAt = jsonEnd;
-    if (insertAt > 0 && body.charAt(insertAt - 1) == '\n') {
-      --insertAt;
-    }
-
-    String aliasField = ",\n  \"deviceAlias\":\"";
-    appendJsonEscapedString(aliasField, fwDeviceAlias());
-    aliasField += "\"";
-    body = body.substring(0, insertAt) + aliasField + body.substring(insertAt);
-  }
-
   setupServer->send(200, "application/json", body);
 }
+
 
 void handleSetupNotFound() {
   setupServer->send(404, "text/plain", "FarmWhisper setup placeholder: not found");
