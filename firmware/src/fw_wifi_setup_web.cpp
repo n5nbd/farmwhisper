@@ -7,6 +7,36 @@
 
 namespace {
 
+
+void appendHtmlEscapedString(String &out, const char *value) {
+  if (value == nullptr) {
+    return;
+  }
+
+  for (const char *p = value; *p != '\0'; ++p) {
+    switch (*p) {
+    case '&':
+      out += "&amp;";
+      break;
+    case '<':
+      out += "&lt;";
+      break;
+    case '>':
+      out += "&gt;";
+      break;
+    case '"':
+      out += "&quot;";
+      break;
+    case '\'':
+      out += "&#39;";
+      break;
+    default:
+      out += *p;
+      break;
+    }
+  }
+}
+
 void appendJsonEscapedString(String &out, const char *value) {
   if (value == nullptr) {
     return;
@@ -408,6 +438,10 @@ String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPi
         <dd>)HTML";
   body += status.deviceId;
   body += R"HTML(</dd>
+        <dt>Device alias</dt>
+        <dd>)HTML";
+  appendHtmlEscapedString(body, fwDeviceAlias());
+  body += R"HTML(</dd>
         <dt>SSID</dt>
         <dd>)HTML";
   body += status.ssid;
@@ -483,6 +517,10 @@ String setupRootPageHtml(
         <dt>Device ID</dt>
         <dd>)HTML";
   body += status.deviceId;
+  body += R"HTML(</dd>
+        <dt>Device alias</dt>
+        <dd>)HTML";
+  appendHtmlEscapedString(body, fwDeviceAlias());
   body += R"HTML(</dd>
         <dt>SSID</dt>
         <dd>)HTML";
