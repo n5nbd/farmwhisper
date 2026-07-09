@@ -68,6 +68,11 @@ void processSerialCommand(char command) {
       Serial.println(FWToF::verboseLogging() ? "on" : "off");
       break;
 
+    case 'x':
+    case 'X':
+      FWWiFiStatus::printStatus(Serial);
+      break;
+
     case 'w':
     case 'W':
       FWWiFiStatus::scanOnce(Serial);
@@ -100,7 +105,7 @@ void printBootBanner() {
   Serial.println("[boot] Button events: short press, long press, double press, triple press");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
-  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, w wifi scan, r reset counters");
+  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, x wifi status, w wifi scan, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa/WiFi/NVS/app calibration not enabled");
 }
@@ -183,6 +188,7 @@ void printHelp() {
   Serial.println("[serial]   i       rescan product I2C bus");
   Serial.println("[serial]   g       print GPIO37/38/39/40 smoke-test states");
   Serial.println("[serial]   v       toggle verbose per-sample ToF logging");
+  Serial.println("[serial]   x       print WiFi radio status without scanning");
   Serial.println("[serial]   w       scan WiFi networks, then return WiFi OFF");
   Serial.println("[serial]   r       reset runtime diagnostics");
 }
