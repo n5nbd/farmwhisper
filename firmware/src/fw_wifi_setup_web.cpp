@@ -299,14 +299,7 @@ constexpr const char *kSetupCss = R"CSS(
   font-weight: 700;
 }
 
-.fw-action-list {
-  margin: 0.5rem 0 0;
-  padding-left: 1.25rem;
-}
 
-.fw-action-list li + li {
-  margin-top: 0.35rem;
-}
 
 .fw-link {
   color: #000080;
