@@ -34,6 +34,14 @@ const IPAddress kApSmokeNetmask(255, 255, 255, 0);
 
 
 constexpr const char *kSetupCss = R"CSS(
+/*
+ * FarmWhisper setup UI theme.
+ *
+ * Keep the .fw-* class names stable. Future themes should be able to replace
+ * this stylesheet and any referenced assets without changing firmware logic or
+ * the generated setup-page structure.
+ */
+
 :root {
   color-scheme: light;
 }
@@ -42,7 +50,7 @@ constexpr const char *kSetupCss = R"CSS(
   box-sizing: border-box;
 }
 
-body {
+.fw-page {
   margin: 0;
   padding: 1rem;
   color: #000;
@@ -51,7 +59,7 @@ body {
   line-height: 1.35;
 }
 
-.card {
+.fw-window {
   max-width: 36rem;
   margin: 0 auto;
   color: #000;
@@ -62,7 +70,7 @@ body {
   box-shadow: 1px 1px 0 #000;
 }
 
-h1 {
+.fw-titlebar {
   margin: 0;
   padding: 0.35rem 0.5rem;
   color: #fff;
@@ -71,15 +79,25 @@ h1 {
   font-weight: 700;
 }
 
-p {
-  margin: 0.75rem 0.75rem 0;
+.fw-content {
+  padding: 0.75rem;
 }
 
-dl {
+.fw-intro,
+.fw-note,
+.fw-actions {
+  margin: 0.75rem 0 0;
+}
+
+.fw-intro {
+  margin-top: 0;
+}
+
+.fw-status-grid {
   display: grid;
   grid-template-columns: 11rem 1fr;
   gap: 0.35rem 0.75rem;
-  margin: 0.75rem;
+  margin: 0.75rem 0 0;
   padding: 0.75rem;
   background: #fff;
   border-color: #404040 #fff #fff #404040;
@@ -87,23 +105,19 @@ dl {
   border-width: 2px;
 }
 
-dt {
+.fw-status-grid dt {
   font-weight: 700;
 }
 
-dd {
+.fw-status-grid dd {
   margin: 0;
   overflow-wrap: anywhere;
   font-family: Consolas, "Courier New", monospace;
 }
 
-a {
+.fw-link {
   color: #000080;
   font-weight: 700;
-}
-
-.note {
-  margin-top: 0.75rem;
 }
 )CSS";
 
@@ -281,11 +295,12 @@ String setupRootPageHtml() {
   body += "  <title>FarmWhisper Setup</title>\n";
   body += "  <link rel=\"stylesheet\" href=\"/setup.css\">\n";
   body += "</head>\n";
-  body += "<body>\n";
-  body += "  <main class=\"card\">\n";
-  body += "    <h1>FarmWhisper Setup</h1>\n";
-  body += "    <p>WiFi setup server is running.</p>\n";
-  body += "    <dl>\n";
+  body += "<body class=\"fw-page\">\n";
+  body += "  <main class=\"fw-window\" aria-labelledby=\"fw-title\">\n";
+  body += "    <h1 id=\"fw-title\" class=\"fw-titlebar\">FarmWhisper Setup</h1>\n";
+  body += "    <section class=\"fw-content\">\n";
+  body += "      <p class=\"fw-intro\">WiFi setup server is running.</p>\n";
+  body += "      <dl class=\"fw-status-grid\">\n";
 
   body += "      <dt>AP smoke/setup</dt><dd>";
   body += apSmokeActive ? "ON" : "OFF";
@@ -323,9 +338,10 @@ String setupRootPageHtml() {
   body += remainingS;
   body += " s</dd>\n";
 
-  body += "    </dl>\n";
-  body += "    <p class=\"note\">Credential entry is not implemented in this slice.</p>\n";
-  body += "    <p><a href=\"/status\">View setup status JSON</a></p>\n";
+  body += "      </dl>\n";
+  body += "      <p class=\"fw-note\">Credential entry is not implemented in this slice.</p>\n";
+  body += "      <p class=\"fw-actions\"><a class=\"fw-link\" href=\"/status\">View setup status JSON</a></p>\n";
+  body += "    </section>\n";
   body += "  </main>\n";
   body += "</body>\n";
   body += "</html>\n";

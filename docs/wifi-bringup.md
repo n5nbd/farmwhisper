@@ -225,3 +225,25 @@ Routes while setup AP/HTTP mode is active:
 - `/` renders the setup status page.
 - `/setup.css` serves the page stylesheet.
 - `/status` serves read-only setup JSON.
+
+
+## Setup UI CSS contract
+
+The setup root page uses stable `fw-*` classes so the visual theme can move
+independently from firmware behavior.
+
+Current semantic CSS hooks:
+
+- `.fw-page`
+- `.fw-window`
+- `.fw-titlebar`
+- `.fw-content`
+- `.fw-intro`
+- `.fw-status-grid`
+- `.fw-note`
+- `.fw-actions`
+- `.fw-link`
+
+Future themes should be swappable by replacing the stylesheet and any
+referenced assets. A new theme should not require changing setup routes, WiFi
+state handling, status JSON, or credential/config logic.
