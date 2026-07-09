@@ -42,4 +42,12 @@ using StatusProvider = SetupStatus (*)();
  */
 void registerRoutes(WebServer &server, StatusProvider statusProvider);
 
+/*
+ * Clear the RAM-only setup unlock state.
+ *
+ * WiFi/AP lifecycle code calls this whenever the setup HTTP server/AP stops so
+ * a future setup session starts locked again.
+ */
+void resetSession();
+
 }  // namespace FWWiFiSetupWeb

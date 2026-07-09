@@ -5,6 +5,10 @@ namespace {
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
+constexpr const char *kDefaultSetupPin = "123456";
+
+bool setupUnlocked = false;
+
 constexpr const char *kSetupCss = R"CSS(
 /*
  * FarmWhisper setup UI theme.
@@ -13,7 +17,6 @@ constexpr const char *kSetupCss = R"CSS(
  * this stylesheet and any referenced assets without changing firmware logic or
  * the generated setup-page structure.
  */
-
 :root {
   color-scheme: light;
 }
@@ -101,6 +104,53 @@ constexpr const char *kSetupCss = R"CSS(
   font-size: 1rem;
 }
 
+.fw-form {
+  margin: 0.75rem 0 0;
+}
+
+.fw-field {
+  margin: 0.6rem 0 0;
+}
+
+.fw-label {
+  display: block;
+  margin: 0 0 0.25rem;
+  font-weight: 700;
+}
+
+.fw-input {
+  display: block;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.3rem 0.4rem;
+  color: #000;
+  background: #fff;
+  border-color: #404040 #fff #fff #404040;
+  border-style: solid;
+  border-width: 2px;
+  font: inherit;
+}
+
+.fw-button {
+  min-height: 2rem;
+  margin-top: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  color: #000;
+  background: #c0c0c0;
+  border-color: #fff #404040 #404040 #fff;
+  border-style: solid;
+  border-width: 2px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.fw-error {
+  padding: 0.5rem;
+  color: #fff;
+  background: #800000;
+  font-weight: 700;
+}
+
 .fw-action-list {
   margin: 0.5rem 0 0;
   padding-left: 1.25rem;
@@ -138,6 +188,85 @@ void sendNoStore() {
   setupServer->sendHeader("Cache-Control", "no-store");
 }
 
+void redirectToRoot() {
+  sendNoStore();
+  setupServer->sendHeader("Location", "/");
+  setupServer->send(303, "text/plain", "");
+}
+
+String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPin) {
+  String body;
+  body.reserve(2200);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Setup Unlock</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Setup Unlock</h1>
+    <div class="fw-content">
+      <p class="fw-intro">Enter the local setup PIN to continue.</p>
+)HTML";
+
+  if (badPin) {
+    body += R"HTML(
+      <p class="fw-error">Incorrect PIN.</p>
+)HTML";
+  }
+
+  body += R"HTML(
+      <section class="fw-section" aria-labelledby="fw-unlock-title">
+        <h2 class="fw-section-title" id="fw-unlock-title">Local setup lock</h2>
+        <p class="fw-note">Default PIN: 123456</p>
+
+        <form class="fw-form" method="post" action="/unlock">
+          <div class="fw-field">
+            <label class="fw-label" for="fw-pin">Setup PIN</label>
+            <input class="fw-input" id="fw-pin" name="pin" type="password"
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                   autocomplete="off" autofocus required>
+          </div>
+
+          <button class="fw-button" type="submit">Unlock setup</button>
+        </form>
+      </section>
+
+      <dl class="fw-status-grid">
+        <dt>Device ID</dt>
+        <dd>)HTML";
+  body += status.deviceId;
+  body += R"HTML(</dd>
+        <dt>SSID</dt>
+        <dd>)HTML";
+  body += status.ssid;
+  body += R"HTML(</dd>
+        <dt>IP</dt>
+        <dd>)HTML";
+  body += status.ip.toString();
+  body += R"HTML(</dd>
+        <dt>Remaining</dt>
+        <dd>)HTML";
+  body += String(status.remainingS);
+  body += R"HTML( s</dd>
+      </dl>
+
+      <p class="fw-actions">
+        <a class="fw-link" href="/status">View setup status JSON</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
 void handleSetupCss() {
   sendNoStore();
   setupServer->send(200, "text/css", kSetupCss);
@@ -145,87 +274,126 @@ void handleSetupCss() {
 
 String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status) {
   /*
-   * Server-render the setup page for now. No JavaScript, no forms, and no
-   * browser-side state are needed until the credential/config model exists.
+   * Server-render the setup page.
+   *
+   * This slice adds only a RAM-held unlock gate using the default local setup
+   * PIN. It does not add PIN storage, PIN change, config storage, JavaScript,
+   * DNS, captive-portal behavior, or saved setup changes.
    */
   String body;
-  body.reserve(1800);
+  body.reserve(3200);
 
-  body += "<!doctype html>\n";
-  body += "<html lang=\"en\">\n";
-  body += "<head>\n";
-  body += "  <meta charset=\"utf-8\">\n";
-  body += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
-  body += "  <title>FarmWhisper Setup</title>\n";
-  body += "  <link rel=\"stylesheet\" href=\"/setup.css\">\n";
-  body += "</head>\n";
-  body += "<body class=\"fw-page\">\n";
-  body += "  <main class=\"fw-window\" aria-labelledby=\"fw-title\">\n";
-  body += "    <h1 id=\"fw-title\" class=\"fw-titlebar\">FarmWhisper Setup</h1>\n";
-  body += "    <section class=\"fw-content\">\n";
-  body += "      <p class=\"fw-intro\">WiFi setup server is running.</p>\n";
-  body += "      <dl class=\"fw-status-grid\">\n";
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Setup</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Setup</h1>
+    <div class="fw-content">
+      <p class="fw-intro">FarmWhisper setup server is running.</p>
 
-  body += "      <dt>AP smoke/setup</dt><dd>";
+      <dl class="fw-status-grid">
+        <dt>AP smoke/setup</dt>
+        <dd>)HTML";
   body += status.apSmokeActive ? "ON" : "OFF";
-  body += "</dd>\n";
-
-  body += "      <dt>Setup HTTP</dt><dd>";
+  body += R"HTML(</dd>
+        <dt>Setup HTTP</dt>
+        <dd>)HTML";
   body += status.setupHttpActive ? "ON" : "OFF";
-  body += "</dd>\n";
-
-  body += "      <dt>Device ID</dt><dd>";
+  body += R"HTML(</dd>
+        <dt>Setup lock</dt>
+        <dd>)HTML";
+  body += setupUnlocked ? "UNLOCKED" : "LOCKED";
+  body += R"HTML(</dd>
+        <dt>Device ID</dt>
+        <dd>)HTML";
   body += status.deviceId;
-  body += "</dd>\n";
-
-  body += "      <dt>SSID</dt><dd>";
+  body += R"HTML(</dd>
+        <dt>SSID</dt>
+        <dd>)HTML";
   body += status.ssid;
-  body += "</dd>\n";
-
-  body += "      <dt>IP</dt><dd>";
+  body += R"HTML(</dd>
+        <dt>IP</dt>
+        <dd>)HTML";
   body += status.ip.toString();
-  body += "</dd>\n";
+  body += R"HTML(</dd>
+        <dt>Stations</dt>
+        <dd>)HTML";
+  body += String(static_cast<unsigned int>(status.stations));
+  body += R"HTML(</dd>
+        <dt>Age</dt>
+        <dd>)HTML";
+  body += String(status.ageS);
+  body += R"HTML( s</dd>
+        <dt>Timeout</dt>
+        <dd>)HTML";
+  body += String(status.timeoutS);
+  body += R"HTML( s</dd>
+        <dt>Remaining</dt>
+        <dd>)HTML";
+  body += String(status.remainingS);
+  body += R"HTML( s</dd>
+      </dl>
 
-  body += "      <dt>Stations</dt><dd>";
-  body += static_cast<int>(status.stations);
-  body += "</dd>\n";
+      <section class="fw-section" aria-labelledby="fw-lock-title">
+        <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
+        <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops.</p>
+        <ul class="fw-action-list">
+          <li>Default PIN: 123456</li>
+          <li>Change setup PIN: not implemented</li>
+          <li>Physical recovery reset: not implemented</li>
+        </ul>
+      </section>
 
-  body += "      <dt>Age</dt><dd>";
-  body += status.ageS;
-  body += " s</dd>\n";
+      <section class="fw-section" aria-labelledby="fw-config-title">
+        <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
+        <ul class="fw-action-list">
+          <li>Device alias: not implemented</li>
+          <li>Node role: not implemented</li>
+          <li>Radio profile: not implemented</li>
+          <li>Sensor calibration: not implemented</li>
+          <li>Save/apply: not implemented</li>
+        </ul>
+      </section>
 
-  body += "      <dt>Timeout</dt><dd>";
-  body += status.timeoutS;
-  body += " s</dd>\n";
+      <p class="fw-note">This page is still read-only. No setup changes are saved in this slice.</p>
 
-  body += "      <dt>Remaining</dt><dd>";
-  body += status.remainingS;
-  body += " s</dd>\n";
-
-  body += "      </dl>\n";
-  body += "      <section class=\"fw-section\" aria-labelledby=\"fw-actions-title\">\n";
-  body += "        <h2 id=\"fw-actions-title\" class=\"fw-section-title\">Actions</h2>\n";
-  body += "        <ul class=\"fw-action-list\">\n";
-  body += "          <li>WiFi credential entry: not implemented</li>\n";
-  body += "          <li>Network scan from setup page: not implemented</li>\n";
-  body += "          <li>Save/reboot: not implemented</li>\n";
-  body += "        </ul>\n";
-  body += "      </section>\n";
-  body += "      <p class=\"fw-note\">Credential entry is not implemented in this slice.</p>\n";
-  body += "      <p class=\"fw-actions\"><a class=\"fw-link\" href=\"/status\">View setup status JSON</a></p>\n";
-  body += "    </section>\n";
-  body += "  </main>\n";
-  body += "</body>\n";
-  body += "</html>\n";
+      <p class="fw-actions">
+        <a class="fw-link" href="/status">View setup status JSON</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>
+)HTML";
 
   return body;
 }
 
 void handleSetupRoot() {
-  const String body = setupRootPageHtml(currentStatus());
-
+  const FWWiFiSetupWeb::SetupStatus status = currentStatus();
+  const String body = setupUnlocked ? setupRootPageHtml(status) : setupUnlockPageHtml(status, false);
   sendNoStore();
   setupServer->send(200, "text/html", body);
+}
+
+void handleSetupUnlock() {
+  const String pin = setupServer->arg("pin");
+
+  if (pin == kDefaultSetupPin) {
+    setupUnlocked = true;
+    redirectToRoot();
+    return;
+  }
+
+  const String body = setupUnlockPageHtml(currentStatus(), true);
+  sendNoStore();
+  setupServer->send(403, "text/html", body);
 }
 
 void handleSetupStatus() {
@@ -237,14 +405,16 @@ void handleSetupStatus() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  body.reserve(320);
-
+  body.reserve(360);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
   body += ",\n";
   body += "  \"setupHttp\": ";
   body += status.setupHttpActive ? "true" : "false";
+  body += ",\n";
+  body += "  \"setupUnlocked\": ";
+  body += setupUnlocked ? "true" : "false";
   body += ",\n";
   body += "  \"deviceId\": \"";
   body += status.deviceId;
@@ -256,16 +426,16 @@ void handleSetupStatus() {
   body += status.ip.toString();
   body += "\",\n";
   body += "  \"stations\": ";
-  body += static_cast<int>(status.stations);
+  body += String(static_cast<unsigned int>(status.stations));
   body += ",\n";
   body += "  \"ageS\": ";
-  body += status.ageS;
+  body += String(status.ageS);
   body += ",\n";
   body += "  \"timeoutS\": ";
-  body += status.timeoutS;
+  body += String(status.timeoutS);
   body += ",\n";
   body += "  \"remainingS\": ";
-  body += status.remainingS;
+  body += String(status.remainingS);
   body += "\n";
   body += "}\n";
 
@@ -288,7 +458,12 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   server.on("/", HTTP_GET, handleSetupRoot);
   server.on("/setup.css", HTTP_GET, handleSetupCss);
   server.on("/status", HTTP_GET, handleSetupStatus);
+  server.on("/unlock", HTTP_POST, handleSetupUnlock);
   server.onNotFound(handleSetupNotFound);
+}
+
+void resetSession() {
+  setupUnlocked = false;
 }
 
 }  // namespace FWWiFiSetupWeb

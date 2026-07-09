@@ -194,6 +194,7 @@ void stopSetupHttpServer() {
    * object remains allocated for the next manual AP smoke/setup session.
    */
   setupServer.close();
+  FWWiFiSetupWeb::resetSession();
   setupHttpActive = false;
 }
 
