@@ -8,8 +8,13 @@
 namespace {
 
 constexpr const char *kApSmokeSsidPrefix = "FarmWhisper-";
+constexpr const char *kDeviceIdPrefix = "FWP-";
 constexpr uint8_t kMacSuffixHexChars = 6;
+
+char macSuffix[kMacSuffixHexChars + 1] = "000000";
 char apSmokeSsid[sizeof("FarmWhisper-") + kMacSuffixHexChars] = "FarmWhisper-000000";
+char deviceId[sizeof("FWP-") + kMacSuffixHexChars] = "FWP-000000";
+
 constexpr uint8_t kApSmokeChannel = 6;
 constexpr uint8_t kApSmokeMaxClients = 2;
 
@@ -82,27 +87,40 @@ const char *wifiAuthText(wifi_auth_mode_t authMode) {
   return authMode == WIFI_AUTH_OPEN ? "open" : "secured";
 }
 
-void buildApSmokeSsid() {
+void buildDeviceIdentity() {
   uint8_t mac[6] = {0};
 
   /*
    * Use the ESP32 base WiFi STA MAC as the device identity seed. The setup AP
-   * SSID uses the last three bytes as six uppercase hex characters, which
-   * keeps the visible setup name short enough for labels and laser marking.
+   * SSID and FarmWhisper product ID use the last three bytes as six uppercase
+   * hex characters. That keeps both strings short enough for printed labels,
+   * laser marking, serial logs, and field setup.
    */
-  if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
-    snprintf(apSmokeSsid, sizeof(apSmokeSsid), "%s000000", kApSmokeSsidPrefix);
-    return;
+  if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) {
+    snprintf(
+        macSuffix,
+        sizeof(macSuffix),
+        "%02X%02X%02X",
+        mac[3],
+        mac[4],
+        mac[5]);
+  } else {
+    snprintf(macSuffix, sizeof(macSuffix), "000000");
   }
 
   snprintf(
       apSmokeSsid,
       sizeof(apSmokeSsid),
-      "%s%02X%02X%02X",
+      "%s%s",
       kApSmokeSsidPrefix,
-      mac[3],
-      mac[4],
-      mac[5]);
+      macSuffix);
+
+  snprintf(
+      deviceId,
+      sizeof(deviceId),
+      "%s%s",
+      kDeviceIdPrefix,
+      macSuffix);
 }
 
 uint32_t apSmokeAgeMs() {
@@ -133,7 +151,7 @@ void handleSetupStatus() {
    * model exists.
    */
   String body;
-  body.reserve(256);
+  body.reserve(320);
 
   body += "{\n";
   body += "  \"apSmoke\": ";
@@ -142,6 +160,9 @@ void handleSetupStatus() {
   body += "  \"setupHttp\": ";
   body += setupHttpActive ? "true" : "false";
   body += ",\n";
+  body += "  \"deviceId\": \"";
+  body += deviceId;
+  body += "\",\n";
   body += "  \"ssid\": \"";
   body += apSmokeSsid;
   body += "\",\n";
@@ -149,7 +170,7 @@ void handleSetupStatus() {
   body += WiFi.softAPIP().toString();
   body += "\",\n";
   body += "  \"stations\": ";
-  body += WiFi.softAPgetStationNum();
+  body += static_cast<int>(WiFi.softAPgetStationNum());
   body += ",\n";
   body += "  \"ageS\": ";
   body += apSmokeAgeMs() / 1000UL;
@@ -207,6 +228,10 @@ String setupRootPageHtml() {
   body += setupHttpActive ? "ON" : "OFF";
   body += "</dd>\n";
 
+  body += "      <dt>Device ID</dt><dd>";
+  body += deviceId;
+  body += "</dd>\n";
+
   body += "      <dt>SSID</dt><dd>";
   body += apSmokeSsid;
   body += "</dd>\n";
@@ -216,7 +241,7 @@ String setupRootPageHtml() {
   body += "</dd>\n";
 
   body += "      <dt>Stations</dt><dd>";
-  body += WiFi.softAPgetStationNum();
+  body += static_cast<int>(WiFi.softAPgetStationNum());
   body += "</dd>\n";
 
   body += "      <dt>Age</dt><dd>";
@@ -310,7 +335,9 @@ void printApStatus(Stream &out) {
     return;
   }
 
-  out.print("[wifi] ap ssid=\"");
+  out.print("[wifi] ap deviceId=");
+  out.print(deviceId);
+  out.print(" ssid=\"");
   out.print(apSmokeSsid);
   out.print("\" ip=");
   out.print(WiFi.softAPIP());
@@ -335,7 +362,7 @@ void begin() {
    * Disable persistence before touching mode so diagnostics do not write
    * network state or credentials to flash.
    */
-  buildApSmokeSsid();
+  buildDeviceIdentity();
   WiFi.persistent(false);
   forceWifiOff();
 }
@@ -360,7 +387,9 @@ void printStatus(Stream &out) {
   out.print(" apSmoke=");
   out.print(apSmokeActive ? "ON" : "OFF");
   out.print(" setupHttp=");
-  out.println(setupHttpActive ? "ON" : "OFF");
+  out.print(setupHttpActive ? "ON" : "OFF");
+  out.print(" deviceId=");
+  out.println(deviceId);
 
   printApStatus(out);
 }
@@ -451,7 +480,7 @@ void startApSetup(Stream &out) {
    * setup placeholder before any DNS, portal, credential, or storage logic is
    * introduced. It is safe to call from the physical button path.
    */
-  buildApSmokeSsid();
+  buildDeviceIdentity();
   WiFi.persistent(false);
   WiFi.scanDelete();
   WiFi.disconnect(false, false);

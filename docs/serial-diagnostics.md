@@ -81,3 +81,13 @@ read-only JSON status endpoint.
 WiFi setup AP status now reports a device-specific SSID in the form
 `FarmWhisper-XXXXXX`, where `XXXXXX` is the last six uppercase hexadecimal
 characters of the ESP32 base WiFi MAC address.
+
+
+## WiFi setup device ID
+
+WiFi setup status now reports a device ID in the form `FWP-XXXXXX`, where
+`XXXXXX` is the same MAC suffix used by the setup AP SSID
+`FarmWhisper-XXXXXX`.
+
+The device ID appears in serial WiFi status, the setup root page, and the
+`/status` JSON endpoint.

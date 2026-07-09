@@ -183,3 +183,21 @@ Example:
 
 A future user-defined alias may provide a friendly name, but it should not
 replace this hardware identity contract.
+
+
+## Device ID
+
+FarmWhisper derives a short product-facing device ID from the same ESP32 WiFi
+MAC suffix used for the setup AP SSID.
+
+- Setup AP SSID: `FarmWhisper-XXXXXX`
+- Device ID: `FWP-XXXXXX`
+- `XXXXXX`: last six uppercase hexadecimal characters of the ESP32 base WiFi
+  MAC address.
+
+The setup root page and `/status` endpoint both report the device ID. This ID
+is intended for labels, laser marking, station logs, and future configuration
+records.
+
+A future user-defined alias can provide a friendly name such as `Coop Feed
+Sensor`, but the alias should not replace the hardware-derived device ID.
