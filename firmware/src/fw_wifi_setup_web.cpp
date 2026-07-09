@@ -9,6 +9,7 @@ constexpr const char *kDefaultSetupPin = "123456";
 
 char setupPin[7] = "123456";
 bool setupUnlocked = false;
+bool setupPinNoticePending = false;
 
 bool isSixDigitPin(const String &pin) {
   if (pin.length() != 6) {
@@ -418,7 +419,21 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *
 
 void handleSetupRoot() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
-  const String body = setupUnlocked ? setupRootPageHtml(status) : setupUnlockPageHtml(status, false);
+
+  String body;
+  if (setupUnlocked) {
+    const char *pinMessage = nullptr;
+
+    if (setupPinNoticePending) {
+      pinMessage = "PIN changed for this AP session. It will reset to 123456 when setup AP stops.";
+      setupPinNoticePending = false;
+    }
+
+    body = setupRootPageHtml(status, pinMessage, false);
+  } else {
+    body = setupUnlockPageHtml(status, false);
+  }
+
   sendNoStore();
   setupServer->send(200, "text/html", body);
 }
@@ -455,6 +470,7 @@ void handleSetupPinChange() {
   }
 
   pin.toCharArray(setupPin, sizeof(setupPin));
+  setupPinNoticePending = true;
   redirectToRoot();
 }
 
@@ -527,6 +543,7 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
 
 void resetSession() {
   setupUnlocked = false;
+  setupPinNoticePending = false;
   resetSetupPinToDefault();
 }
 
