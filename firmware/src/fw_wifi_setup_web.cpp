@@ -355,44 +355,6 @@ constexpr const char *kSetupCss = R"CSS(
 }
 
 
-/* Optional setup PIN layout.
-   Label text sits above the PIN field. The PIN field and save button sit on
-   the same left-justified row when there is room. */
-form[action="/pin"] {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-form[action="/pin"] label,
-form[action="/pin"] .fw-label {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  margin: 0;
-  white-space: nowrap;
-}
-
-form[action="/pin"] input,
-form[action="/pin"] .fw-input {
-  width: 7ch;
-  min-width: 7ch;
-  max-width: 7ch;
-  text-align: center;
-}
-
-form[action="/pin"] button,
-form[action="/pin"] .fw-button {
-  margin: 0;
-  white-space: nowrap;
-}
-
-form[action="/pin"] .fw-actions {
-  margin: 0;
-}
 
 )CSS";
 
@@ -608,16 +570,23 @@ String setupRootPageHtml(
   }
 
   body += R"HTML(
-        <form class="fw-form" method="post" action="/pin">
-          <div class="fw-field">
-            <label class="fw-label" for="fw-new-pin">New setup PIN</label>
-            <input class="fw-input" id="fw-new-pin" name="pin" type="password"
-                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-                   autocomplete="off" placeholder="leave blank to clear">
-          </div>
+        <div class="fw-config-list">
+          <form class="fw-config-row" method="post" action="/pin">
+            <div class="fw-config-label">
+              <label for="fw-new-pin">New setup PIN</label>
+            </div>
 
-          <button class="fw-button" type="submit">Save setup PIN</button>
-        </form>
+            <div class="fw-config-control">
+              <input class="fw-input" id="fw-new-pin" name="pin" type="password"
+                     inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                     autocomplete="off" placeholder="blank for none">
+            </div>
+
+            <div class="fw-config-action">
+              <button class="fw-button" type="submit">Update</button>
+            </div>
+          </form>
+        </div>
       </section>
 
       <section class="fw-section" aria-labelledby="fw-config-title">
