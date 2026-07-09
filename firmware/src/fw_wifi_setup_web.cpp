@@ -57,7 +57,8 @@ constexpr const char *kSetupCss = R"CSS(
 
 .fw-intro,
 .fw-note,
-.fw-actions {
+.fw-actions,
+.fw-section {
   margin: 0.75rem 0 0;
 }
 
@@ -85,6 +86,28 @@ constexpr const char *kSetupCss = R"CSS(
   margin: 0;
   overflow-wrap: anywhere;
   font-family: Consolas, "Courier New", monospace;
+}
+
+.fw-section {
+  padding: 0.75rem;
+  background: #c0c0c0;
+  border-color: #404040 #fff #fff #404040;
+  border-style: solid;
+  border-width: 2px;
+}
+
+.fw-section-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.fw-action-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.fw-action-list li + li {
+  margin-top: 0.35rem;
 }
 
 .fw-link {
@@ -180,6 +203,14 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status) {
   body += " s</dd>\n";
 
   body += "      </dl>\n";
+  body += "      <section class=\"fw-section\" aria-labelledby=\"fw-actions-title\">\n";
+  body += "        <h2 id=\"fw-actions-title\" class=\"fw-section-title\">Actions</h2>\n";
+  body += "        <ul class=\"fw-action-list\">\n";
+  body += "          <li>WiFi credential entry: not implemented</li>\n";
+  body += "          <li>Network scan from setup page: not implemented</li>\n";
+  body += "          <li>Save/reboot: not implemented</li>\n";
+  body += "        </ul>\n";
+  body += "      </section>\n";
   body += "      <p class=\"fw-note\">Credential entry is not implemented in this slice.</p>\n";
   body += "      <p class=\"fw-actions\"><a class=\"fw-link\" href=\"/status\">View setup status JSON</a></p>\n";
   body += "    </section>\n";

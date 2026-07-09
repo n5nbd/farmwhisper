@@ -264,3 +264,25 @@ Responsibilities:
 The setup web module receives a read-only status snapshot callback from the
 WiFi status module. It must not start/stop WiFi, scan networks, store
 credentials, or perform captive-portal behavior.
+
+
+## Setup page actions placeholder
+
+The setup root page includes a read-only Actions section that reserves layout
+space for future setup controls.
+
+Current placeholders:
+
+- WiFi credential entry: not implemented
+- Network scan from setup page: not implemented
+- Save/reboot: not implemented
+
+This is presentation-only. There are no buttons, forms, POST routes, credential
+storage, scan-from-page behavior, reboot behavior, DNS changes, or captive
+portal behavior in this slice.
+
+Additional stable CSS hooks:
+
+- `.fw-section`
+- `.fw-section-title`
+- `.fw-action-list`
