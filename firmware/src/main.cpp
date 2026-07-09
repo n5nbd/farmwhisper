@@ -9,6 +9,7 @@
 #include "fw_status_pixel.h"
 #include "fw_tof.h"
 #include "fw_types.h"
+#include "fw_wifi_status.h"
 
 void setup() {
   delay(1200);
@@ -18,6 +19,7 @@ void setup() {
 
   FWSerialDiag::printBootBanner();
 
+  FWWiFiStatus::begin();
   FWStatusPixel::begin();
 
   FWButton::begin();
