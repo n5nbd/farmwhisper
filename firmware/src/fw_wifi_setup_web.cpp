@@ -7,7 +7,27 @@ FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
 constexpr const char *kDefaultSetupPin = "123456";
 
+char setupPin[7] = "123456";
 bool setupUnlocked = false;
+
+bool isSixDigitPin(const String &pin) {
+  if (pin.length() != 6) {
+    return false;
+  }
+
+  for (uint8_t i = 0; i < 6; ++i) {
+    if (!isDigit(pin[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void resetSetupPinToDefault() {
+  strncpy(setupPin, kDefaultSetupPin, sizeof(setupPin));
+  setupPin[sizeof(setupPin) - 1] = '\0';
+}
 
 constexpr const char *kSetupCss = R"CSS(
 /*
@@ -272,13 +292,13 @@ void handleSetupCss() {
   setupServer->send(200, "text/css", kSetupCss);
 }
 
-String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status) {
+String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status, const char *pinMessage = nullptr, bool pinError = false) {
   /*
    * Server-render the setup page.
    *
-   * This slice adds only a RAM-held unlock gate using the default local setup
-   * PIN. It does not add PIN storage, PIN change, config storage, JavaScript,
-   * DNS, captive-portal behavior, or saved setup changes.
+   * This slice keeps setup lock state and PIN changes in RAM only.
+   * It does not add PIN storage, config storage, JavaScript, DNS,
+   * captive-portal behavior, or saved setup changes.
    */
   String body;
   body.reserve(3200);
@@ -344,10 +364,31 @@ String setupRootPageHtml(const FWWiFiSetupWeb::SetupStatus &status) {
         <h2 class="fw-section-title" id="fw-lock-title">Local setup lock</h2>
         <p class="fw-note">PIN accepted. Setup remains unlocked until the setup AP stops. PIN management is not saved in this slice.</p>
         <ul class="fw-action-list">
-          <li>Current PIN: default 123456</li>
-          <li>Change PIN form: not implemented</li>
+          <li>Current PIN: RAM session value</li>
+          <li>Default after AP restart: 123456</li>
           <li>Physical recovery reset: planned button gesture</li>
         </ul>
+
+)HTML";
+
+  if (pinMessage != nullptr) {
+    body += pinError ? R"HTML(        <p class="fw-error">)HTML" : R"HTML(        <p class="fw-note">)HTML";
+    body += pinMessage;
+    body += R"HTML(</p>
+)HTML";
+  }
+
+  body += R"HTML(
+        <form class="fw-form" method="post" action="/pin">
+          <div class="fw-field">
+            <label class="fw-label" for="fw-new-pin">New setup PIN</label>
+            <input class="fw-input" id="fw-new-pin" name="pin" type="password"
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                   autocomplete="off" required>
+          </div>
+
+          <button class="fw-button" type="submit">Change PIN for this AP session</button>
+        </form>
       </section>
 
       <section class="fw-section" aria-labelledby="fw-config-title">
@@ -385,7 +426,7 @@ void handleSetupRoot() {
 void handleSetupUnlock() {
   const String pin = setupServer->arg("pin");
 
-  if (pin == kDefaultSetupPin) {
+  if (pin == setupPin) {
     setupUnlocked = true;
     redirectToRoot();
     return;
@@ -394,6 +435,27 @@ void handleSetupUnlock() {
   const String body = setupUnlockPageHtml(currentStatus(), true);
   sendNoStore();
   setupServer->send(403, "text/html", body);
+}
+
+void handleSetupPinChange() {
+  if (!setupUnlocked) {
+    sendNoStore();
+    setupServer->send(403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  const String pin = setupServer->arg("pin");
+
+  if (!isSixDigitPin(pin)) {
+    const String body = setupRootPageHtml(
+        currentStatus(), "PIN must be exactly 6 digits.", true);
+    sendNoStore();
+    setupServer->send(400, "text/html", body);
+    return;
+  }
+
+  pin.toCharArray(setupPin, sizeof(setupPin));
+  redirectToRoot();
 }
 
 void handleSetupStatus() {
@@ -459,11 +521,13 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   server.on("/setup.css", HTTP_GET, handleSetupCss);
   server.on("/status", HTTP_GET, handleSetupStatus);
   server.on("/unlock", HTTP_POST, handleSetupUnlock);
+  server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
 
 void resetSession() {
   setupUnlocked = false;
+  resetSetupPinToDefault();
 }
 
 }  // namespace FWWiFiSetupWeb
