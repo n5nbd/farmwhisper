@@ -1,5 +1,6 @@
 #include "fw_wifi_setup_web.h"
 #include "fw_device_config.h"
+#include "fw_radio_profile.h"
 
 #include <Preferences.h>
 
@@ -773,6 +774,19 @@ void handleSetupStatus() {
 
   body += ",\n  \"deviceAlias\": \"";
   appendJsonEscapedString(body, fwDeviceAlias());
+  body += "\"";
+
+  const FwRadioProfileId selectedRadioProfileId =
+      fwSelectedRadioProfileId();
+
+  body += ",\n  \"radioProfileKey\": \"";
+  appendJsonEscapedString(
+      body, fwRadioProfileKey(selectedRadioProfileId));
+  body += "\"";
+
+  body += ",\n  \"radioProfileName\": \"";
+  appendJsonEscapedString(
+      body, fwRadioProfileName(selectedRadioProfileId));
   body += "\"";
 
   body += ",\n  \"ssid\": \"";

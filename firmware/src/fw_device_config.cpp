@@ -98,3 +98,7 @@ void fwClearDeviceAlias() {
   copyAlias(kDefaultDeviceAlias);
   configLoaded = true;
 }
+
+FwRadioProfileId fwSelectedRadioProfileId() {
+  return FwRadioProfileId::UsDefault;
+}
