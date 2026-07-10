@@ -37,6 +37,9 @@ SX1262 radio(&radioModule);
 volatile bool packetReceived = false;
 uint32_t packetCount = 0;
 uint32_t receiveErrorCount = 0;
+bool radioReady = false;
+uint32_t lastHeartbeatMs = 0;
+constexpr uint32_t kHeartbeatIntervalMs = 60000;
 
 void onPacketReceived() {
   packetReceived = true;
@@ -130,6 +133,7 @@ bool beginRadio() {
     return false;
   }
 
+  radioReady = true;
   Serial.println("[listener] READY continuous receive");
   return true;
 }
@@ -177,6 +181,29 @@ void serviceReceivedPacket() {
   }
 }
 
+
+void printHeartbeatIfDue() {
+  const uint32_t now = millis();
+  if ((now - lastHeartbeatMs) < kHeartbeatIntervalMs) {
+    return;
+  }
+
+  lastHeartbeatMs = now;
+
+  const FwRadioProfile *profile = listenerProfile();
+
+  Serial.print("[listener] alive uptimeS=");
+  Serial.print(now / 1000);
+  Serial.print(" radio=");
+  Serial.print(radioReady ? "READY" : "NOT_READY");
+  Serial.print(" packets=");
+  Serial.print(packetCount);
+  Serial.print(" errors=");
+  Serial.print(receiveErrorCount);
+  Serial.print(" profile=");
+  Serial.println(profile == nullptr ? "none" : profile->key);
+}
+
 }  // namespace
 
 void setup() {
@@ -199,5 +226,6 @@ void setup() {
 
 void loop() {
   serviceReceivedPacket();
+  printHeartbeatIfDue();
   delay(1);
 }
