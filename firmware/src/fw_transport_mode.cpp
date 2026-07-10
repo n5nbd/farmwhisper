@@ -76,3 +76,13 @@ const char *fwTransportModeName(FwTransportModeId id) {
   const FwTransportMode *mode = fwTransportModeById(id);
   return mode == nullptr ? "" : mode->name;
 }
+
+bool fwTransportModeUsesLoRa(FwTransportModeId id) {
+  return id == FwTransportModeId::LoRa ||
+         id == FwTransportModeId::LoRaAndBluetoothLe;
+}
+
+bool fwTransportModeUsesBluetoothLe(FwTransportModeId id) {
+  return id == FwTransportModeId::BluetoothLe ||
+         id == FwTransportModeId::LoRaAndBluetoothLe;
+}

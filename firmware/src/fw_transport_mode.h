@@ -22,3 +22,6 @@ const FwTransportMode *fwTransportModeById(FwTransportModeId id);
 const FwTransportMode *fwTransportModeByKey(const char *key);
 const char *fwTransportModeKey(FwTransportModeId id);
 const char *fwTransportModeName(FwTransportModeId id);
+
+bool fwTransportModeUsesLoRa(FwTransportModeId id);
+bool fwTransportModeUsesBluetoothLe(FwTransportModeId id);
