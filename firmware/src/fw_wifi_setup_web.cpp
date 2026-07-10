@@ -561,7 +561,6 @@ String setupRootPageHtml(
             <div class="fw-config-control">
               <input class="fw-input" id="fw-alias" name="alias" type="text"
                      maxlength="32" value=")HTML";
-  body += "\"";
   appendHtmlEscapedString(body, fwDeviceAlias());
   body += R"HTML(" autocomplete="off">
             </div>
