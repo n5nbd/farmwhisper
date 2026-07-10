@@ -1,17 +1,20 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 
 #include "fw_radio_profile.h"
 
-// Dormant FarmWhisper radio integration boundary.
+// FarmWhisper SX1262 integration boundary.
 //
-// This module records the validated Heltec WiFi LoRa 32 V4 onboard SX1262
-// hardware contract and resolves the selected firmware-owned radio profile.
-// It does not initialize, transmit, receive, or add a radio library yet.
+// The radio remains inactive at boot. The serial diagnostic command explicitly
+// initializes the onboard Heltec V4 SX1262 using the selected firmware-owned
+// profile. This slice does not transmit or start a receive loop.
 
 enum class FwRadioState : uint8_t {
   Disabled = 0,
+  Ready,
+  Error,
 };
 
 struct FwRadioHardware {
@@ -27,10 +30,13 @@ struct FwRadioHardware {
 namespace FWRadio {
 
 const FwRadioHardware &hardware();
-
 const FwRadioProfile *selectedProfile();
 
 FwRadioState state();
 const char *stateName();
+int16_t lastResult();
+
+bool beginDiagnostic(Stream &out);
+void printStatus(Stream &out);
 
 }  // namespace FWRadio
