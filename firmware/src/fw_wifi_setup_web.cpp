@@ -551,7 +551,10 @@ String setupRootPageHtml(
 
           <div class="fw-config-row">
             <div class="fw-config-label">Radio profile</div>
-            <div class="fw-config-note">Not implemented yet.</div>
+            <div class="fw-config-note">)HTML";
+  appendHtmlEscapedString(
+      body, fwRadioProfileName(fwSelectedRadioProfileId()));
+  body += R"HTML(</div>
           </div>
 
           <div class="fw-config-row">
