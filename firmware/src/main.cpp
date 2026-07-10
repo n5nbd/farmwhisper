@@ -5,6 +5,7 @@
 #include "fw_expansion_gpio.h"
 #include "fw_pins.h"
 #include "fw_product_i2c.h"
+#include "fw_radio.h"
 #include "fw_serial_diag.h"
 #include "fw_status_pixel.h"
 #include "fw_tof.h"
@@ -48,6 +49,10 @@ void loop() {
     if (FWWiFiStatus::clearSetupPinWithRecovery(Serial)) {
       FWStatusPixel::flashRed(5, 150, 150);
     }
+  }
+
+  if (FWButton::consumeDoublePressEvent()) {
+    FWRadio::transmitDiagnostic(Serial);
   }
 
   if (FWButton::consumeTriplePressEvent()) {

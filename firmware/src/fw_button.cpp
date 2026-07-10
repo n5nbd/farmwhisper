@@ -17,6 +17,7 @@ uint32_t buttonPressCount = 0;
 uint32_t buttonLongPressCount = 0;
 uint32_t buttonDoublePressCount = 0;
 uint32_t buttonTriplePressCount = 0;
+bool doublePressEventPending = false;
 bool triplePressEventPending = false;
 bool recoveryHoldEventPending = false;
 
@@ -48,6 +49,7 @@ void printButtonEventCounters() {
 
 void fireDoublePressEvent() {
   buttonDoublePressCount++;
+  doublePressEventPending = true;
   FWStatusPixel::triggerButtonOverlay(ButtonOverlay::DoublePress, FWConfig::ButtonMultiFlashMs);
 
   Serial.print("[button] doublePress");
@@ -205,6 +207,7 @@ void resetDiagnostics() {
   buttonLongPressCount = 0;
   buttonDoublePressCount = 0;
   buttonTriplePressCount = 0;
+  doublePressEventPending = false;
   triplePressEventPending = false;
   recoveryHoldEventPending = false;
 
@@ -239,6 +242,15 @@ uint32_t triplePressCount() {
 
 uint8_t pendingShortPresses() {
   return buttonPendingShortPresses;
+}
+
+bool consumeDoublePressEvent() {
+  if (!doublePressEventPending) {
+    return false;
+  }
+
+  doublePressEventPending = false;
+  return true;
 }
 
 bool consumeTriplePressEvent() {

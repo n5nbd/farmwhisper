@@ -37,6 +37,11 @@ const char *stateName();
 int16_t lastResult();
 
 bool beginDiagnostic(Stream &out);
+bool transmitDiagnostic(Stream &out);
+
+uint32_t txCount();
+int16_t lastTxResult();
+
 void printStatus(Stream &out);
 
 }  // namespace FWRadio

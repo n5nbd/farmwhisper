@@ -2,6 +2,7 @@
 
 #include <RadioLib.h>
 #include <SPI.h>
+#include <string.h>
 
 #include "fw_device_config.h"
 
@@ -31,6 +32,8 @@ SX1262 radio(&radioModule);
 
 FwRadioState radioState = FwRadioState::Disabled;
 int16_t radioResult = RADIOLIB_ERR_NONE;
+uint32_t radioTxCount = 0;
+int16_t radioLastTxResult = RADIOLIB_ERR_NONE;
 
 int8_t appliedPowerDbm(const FwRadioProfile &profile) {
   return profile.txPowerDbm > kRadioLibSx1262MaxPowerDbm
@@ -73,6 +76,14 @@ int16_t lastResult() {
   return radioResult;
 }
 
+uint32_t txCount() {
+  return radioTxCount;
+}
+
+int16_t lastTxResult() {
+  return radioLastTxResult;
+}
+
 void printStatus(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
 
@@ -103,7 +114,11 @@ void printStatus(Stream &out) {
   out.print(" requestedPowerDbm=");
   out.print(profile->txPowerDbm);
   out.print(" appliedPowerDbm=");
-  out.println(appliedPowerDbm(*profile));
+  out.print(appliedPowerDbm(*profile));
+  out.print(" txCount=");
+  out.print(radioTxCount);
+  out.print(" lastTxResult=");
+  out.println(radioLastTxResult);
 }
 
 bool beginDiagnostic(Stream &out) {
@@ -162,6 +177,61 @@ bool beginDiagnostic(Stream &out) {
   out.println("[radio] SX1262 init PASS; no TX/RX started");
   printStatus(out);
   return true;
+}
+
+
+bool transmitDiagnostic(Stream &out) {
+  const FwRadioProfile *profile = selectedProfile();
+  if (profile == nullptr) {
+    radioLastTxResult = RADIOLIB_ERR_UNKNOWN;
+    out.println("[radio] TX failed: no selected/default profile");
+    return false;
+  }
+
+  if (radioState != FwRadioState::Ready) {
+    out.println("[radio] radio not ready; initializing first");
+    if (!beginDiagnostic(out)) {
+      radioLastTxResult = radioResult;
+      return false;
+    }
+  }
+
+  const uint32_t nextCount = radioTxCount + 1;
+  char packet[96];
+  snprintf(
+      packet,
+      sizeof(packet),
+      "FWP TEST profile=%s count=%lu",
+      profile->key,
+      static_cast<unsigned long>(nextCount));
+
+  out.print("[radio] TX \"");
+  out.print(packet);
+  out.println("\"");
+
+  const uint32_t startedMs = millis();
+  radioLastTxResult = radio.transmit(
+      reinterpret_cast<uint8_t *>(packet),
+      strlen(packet));
+  const uint32_t elapsedMs = millis() - startedMs;
+
+  if (radioLastTxResult == RADIOLIB_ERR_NONE) {
+    radioTxCount = nextCount;
+    out.print("[radio] TX PASS elapsedMs=");
+    out.println(elapsedMs);
+  } else {
+    out.print("[radio] TX failed code=");
+    out.print(radioLastTxResult);
+    out.print(" elapsedMs=");
+    out.println(elapsedMs);
+  }
+
+  const int16_t standbyResult = radio.standby();
+  out.print("[radio] standby result=");
+  out.println(standbyResult);
+
+  printStatus(out);
+  return radioLastTxResult == RADIOLIB_ERR_NONE;
 }
 
 }  // namespace FWRadio

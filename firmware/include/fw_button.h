@@ -27,6 +27,14 @@ uint32_t triplePressCount();
 uint8_t pendingShortPresses();
 
 /*
+ * Return true once for each debounced double-press event.
+ *
+ * This lets main.cpp temporarily use double press as a standalone bench
+ * trigger without coupling the button module to the radio implementation.
+ */
+bool consumeDoublePressEvent();
+
+/*
  * Return true once for each debounced triple-press event.
  *
  * This lets main.cpp orchestrate app behavior from button events without

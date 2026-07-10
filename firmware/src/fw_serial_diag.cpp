@@ -85,6 +85,11 @@ void processSerialCommand(char command) {
       break;
 
 
+    case 't':
+    case 'T':
+      FWRadio::transmitDiagnostic(Serial);
+      break;
+
     case 'l':
     case 'L':
       FWRadio::beginDiagnostic(Serial);
@@ -117,7 +122,7 @@ void printBootBanner() {
   Serial.println("[boot] Button events: short press, long press, double press, triple press starts/refreshes setup AP");
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
-  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, a wifi AP, x wifi status, w wifi scan, l LoRa init, r reset counters");
+  Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, a wifi AP, x wifi status, w wifi scan, l LoRa init, t LoRa TX, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
   Serial.println("[boot] LoRa inactive until explicit serial l diagnostic");
   Serial.println("[boot] WiFi customer join/app calibration not enabled");
@@ -159,6 +164,10 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(FWRadio::stateName());
   Serial.print(" radioResult=");
   Serial.print(FWRadio::lastResult());
+  Serial.print(" radioTxCount=");
+  Serial.print(FWRadio::txCount());
+  Serial.print(" radioLastTxResult=");
+  Serial.print(FWRadio::lastTxResult());
   Serial.print(" tofReady=");
   Serial.print(FWToF::ready() ? "yes" : "no");
   Serial.print(" tofVerbose=");
@@ -210,6 +219,7 @@ void printHelp() {
   Serial.println("[serial]   x       print WiFi radio status without scanning");
   Serial.println("[serial]   w       scan WiFi networks, then return WiFi OFF");
   Serial.println("[serial]   l       initialize onboard SX1262 using selected profile");
+  Serial.println("[serial]   t       transmit one LoRa diagnostic packet");
   Serial.println("[serial]   r       reset runtime diagnostics");
 }
 
