@@ -72,6 +72,29 @@ void appendJsonEscapedString(String &out, const char *value) {
 }
 
 
+void appendRadioProfileOptions(String &out) {
+  const FwRadioProfileId selectedId = fwSelectedRadioProfileId();
+
+  for (size_t i = 0; i < fwRadioProfileCount(); ++i) {
+    const FwRadioProfile *profile = fwRadioProfileAt(i);
+    if (profile == nullptr) {
+      continue;
+    }
+
+    out += R"HTML(<option value=")HTML";
+    appendHtmlEscapedString(out, profile->key);
+    out += "\"";
+
+    if (profile->id == selectedId) {
+      out += " selected";
+    }
+
+    out += ">";
+    appendHtmlEscapedString(out, profile->name);
+    out += "</option>";
+  }
+}
+
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
@@ -549,13 +572,27 @@ String setupRootPageHtml(
             <div class="fw-config-note">Not implemented yet.</div>
           </div>
 
-          <div class="fw-config-row">
-            <div class="fw-config-label">Radio profile</div>
-            <div class="fw-config-note">)HTML";
-  appendHtmlEscapedString(
-      body, fwRadioProfileName(fwSelectedRadioProfileId()));
-  body += R"HTML(</div>
-          </div>
+          <form class="fw-config-row" method="post" action="/radio-profile">
+            <div class="fw-config-label">
+              <label for="fw-radio-profile">Radio profile</label>
+            </div>
+
+            <div class="fw-config-control">
+              <select class="fw-input fw-select"
+                      id="fw-radio-profile"
+                      name="profile">)HTML";
+  appendRadioProfileOptions(body);
+  body += R"HTML(</select>
+            </div>
+
+            <div class="fw-config-action">
+              <button class="fw-button" type="submit">Update</button>
+            </div>
+
+            <div class="fw-config-note">
+              Radio settings are managed by firmware profiles.
+            </div>
+          </form>
 
           <div class="fw-config-row">
             <div class="fw-config-label">Sensor calibration</div>
@@ -700,6 +737,29 @@ void handleSetupAliasChange() {
   redirectToRoot();
 }
 
+void handleSetupRadioProfileChange() {
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  String profileKey = setupServer->arg("profile");
+  profileKey.trim();
+
+  if (!fwSetSelectedRadioProfileByKey(profileKey.c_str())) {
+    sendNoStore();
+    setupServer->send(
+        400,
+        "text/plain",
+        "Unknown FarmWhisper radio profile.");
+    return;
+  }
+
+  redirectToRoot();
+}
+
 void handleSetupPinChange() {
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
@@ -833,6 +893,10 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   server.on("/status", HTTP_GET, handleSetupStatus);
   server.on("/unlock", HTTP_POST, handleSetupUnlock);
   server.on("/alias", HTTP_POST, handleSetupAliasChange);
+  server.on(
+      "/radio-profile",
+      HTTP_POST,
+      handleSetupRadioProfileChange);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
