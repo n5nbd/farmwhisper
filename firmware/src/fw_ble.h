@@ -4,16 +4,14 @@
 
 namespace FWBLE {
 
-// Apply the persisted transport policy at boot.
-// BLE-capable modes advertise a connectable, read-only standard Device
-// Information Service. No custom FarmWhisper service or data path exists yet.
+// Apply the persisted transport policy and start BLE advertising when enabled.
 void begin(Stream &out);
 
-// Reconcile advertising with the current transport mode and device alias.
-// Setup-page changes therefore take effect without rebooting.
+// Reconcile BLE advertising, identity, and configuration values with current
+// firmware state. Call from the main loop.
 void service(Stream &out);
 
 bool isAdvertising();
 const char *advertisedName();
 
-} // namespace FWBLE
+}  // namespace FWBLE
