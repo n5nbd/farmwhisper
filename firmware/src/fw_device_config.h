@@ -7,8 +7,8 @@
 // FarmWhisper product configuration model.
 //
 // This module owns product-facing configuration fields that are independent of
-// the WiFi/setup transport. The device alias is NVS-backed. Radio profile
-// selection is exposed here as product configuration but is not persistent yet.
+// the WiFi/setup transport. Device alias and selected radio profile are stored
+// in NVS.
 constexpr size_t kFwDeviceAliasMaxLen = 32;
 
 void fwLoadDeviceConfig();
@@ -19,3 +19,5 @@ bool fwSetDeviceAlias(const char* alias);
 void fwClearDeviceAlias();
 
 FwRadioProfileId fwSelectedRadioProfileId();
+bool fwSetSelectedRadioProfileByKey(const char* key);
+void fwClearSelectedRadioProfile();

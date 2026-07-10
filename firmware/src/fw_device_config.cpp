@@ -6,12 +6,15 @@
 #include <string.h>
 
 namespace {
+
 constexpr const char* kConfigNamespace = "fwdevcfg";
 constexpr const char* kAliasKey = "alias";
+constexpr const char* kRadioProfileKey = "radioProfile";
 constexpr const char* kDefaultDeviceAlias = "FarmWhisper device";
 
 bool configLoaded = false;
 char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
+FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
 
 void copyAlias(const char* value) {
   if (value == nullptr || value[0] == '\0') {
@@ -42,17 +45,38 @@ bool isValidAlias(const char* value) {
   return true;
 }
 
-} // namespace
+void useDefaultRadioProfile() {
+  const FwRadioProfile* profile = fwDefaultRadioProfile();
+  selectedRadioProfileId =
+      profile == nullptr ? FwRadioProfileId::UsDefault : profile->id;
+}
+
+}  // namespace
 
 void fwLoadDeviceConfig() {
   Preferences prefs;
+
   copyAlias(kDefaultDeviceAlias);
+  useDefaultRadioProfile();
 
   if (prefs.begin(kConfigNamespace, true)) {
-    String storedAlias = prefs.getString(kAliasKey, kDefaultDeviceAlias);
+    const String storedAlias =
+        prefs.getString(kAliasKey, kDefaultDeviceAlias);
+
     if (isValidAlias(storedAlias.c_str())) {
       copyAlias(storedAlias.c_str());
     }
+
+    const String storedRadioProfileKey =
+        prefs.getString(kRadioProfileKey, "");
+
+    const FwRadioProfile* storedRadioProfile =
+        fwRadioProfileByKey(storedRadioProfileKey.c_str());
+
+    if (storedRadioProfile != nullptr) {
+      selectedRadioProfileId = storedRadioProfile->id;
+    }
+
     prefs.end();
   }
 
@@ -100,5 +124,42 @@ void fwClearDeviceAlias() {
 }
 
 FwRadioProfileId fwSelectedRadioProfileId() {
-  return FwRadioProfileId::UsDefault;
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return selectedRadioProfileId;
+}
+
+bool fwSetSelectedRadioProfileByKey(const char* key) {
+  const FwRadioProfile* profile = fwRadioProfileByKey(key);
+  if (profile == nullptr) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kConfigNamespace, false)) {
+    return false;
+  }
+
+  const bool ok = prefs.putString(kRadioProfileKey, profile->key) > 0;
+  prefs.end();
+
+  if (ok) {
+    selectedRadioProfileId = profile->id;
+    configLoaded = true;
+  }
+
+  return ok;
+}
+
+void fwClearSelectedRadioProfile() {
+  Preferences prefs;
+  if (prefs.begin(kConfigNamespace, false)) {
+    prefs.remove(kRadioProfileKey);
+    prefs.end();
+  }
+
+  useDefaultRadioProfile();
+  configLoaded = true;
 }
