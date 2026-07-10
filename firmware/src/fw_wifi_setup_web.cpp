@@ -572,11 +572,6 @@ String setupRootPageHtml(
             <div class="fw-config-note">Leave blank to restore the default alias.</div>
           </form>
 
-          <div class="fw-config-row">
-            <div class="fw-config-label">Node role</div>
-            <div class="fw-config-note">Not implemented yet.</div>
-          </div>
-
           <form class="fw-config-row" method="post" action="/transport-mode">
             <label class="fw-config-label" for="fw-transport-mode">Transport mode</label>
             <div class="fw-config-control">
