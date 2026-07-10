@@ -164,6 +164,10 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(FWRadio::stateName());
   Serial.print(" radioResult=");
   Serial.print(FWRadio::lastResult());
+  Serial.print(" radioSelectedProfile=");
+  Serial.print(FWRadio::selectedProfileKey());
+  Serial.print(" radioAppliedProfile=");
+  Serial.print(FWRadio::appliedProfileKey());
   Serial.print(" radioTxCount=");
   Serial.print(FWRadio::txCount());
   Serial.print(" radioLastTxResult=");

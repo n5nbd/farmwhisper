@@ -31,6 +31,10 @@ namespace FWRadio {
 
 const FwRadioHardware &hardware();
 const FwRadioProfile *selectedProfile();
+const FwRadioProfile *appliedProfile();
+
+const char *selectedProfileKey();
+const char *appliedProfileKey();
 
 FwRadioState state();
 const char *stateName();

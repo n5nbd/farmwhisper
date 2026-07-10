@@ -34,6 +34,8 @@ FwRadioState radioState = FwRadioState::Disabled;
 int16_t radioResult = RADIOLIB_ERR_NONE;
 uint32_t radioTxCount = 0;
 int16_t radioLastTxResult = RADIOLIB_ERR_NONE;
+bool appliedProfileValid = false;
+FwRadioProfileId appliedProfileId = FwRadioProfileId::UsDefault;
 
 int8_t appliedPowerDbm(const FwRadioProfile &profile) {
   return profile.txPowerDbm > kRadioLibSx1262MaxPowerDbm
@@ -54,6 +56,24 @@ const FwRadioProfile *selectedProfile() {
       fwRadioProfileById(fwSelectedRadioProfileId());
 
   return profile == nullptr ? fwDefaultRadioProfile() : profile;
+}
+
+const FwRadioProfile *appliedProfile() {
+  if (!appliedProfileValid) {
+    return nullptr;
+  }
+
+  return fwRadioProfileById(appliedProfileId);
+}
+
+const char *selectedProfileKey() {
+  const FwRadioProfile *profile = selectedProfile();
+  return profile == nullptr ? "none" : profile->key;
+}
+
+const char *appliedProfileKey() {
+  const FwRadioProfile *profile = appliedProfile();
+  return profile == nullptr ? "none" : profile->key;
 }
 
 FwRadioState state() {
@@ -91,14 +111,16 @@ void printStatus(Stream &out) {
   out.print(stateName());
   out.print(" result=");
   out.print(radioResult);
+  out.print(" selectedProfile=");
+  out.print(selectedProfileKey());
+  out.print(" appliedProfile=");
+  out.print(appliedProfileKey());
 
   if (profile == nullptr) {
-    out.println(" profile=none");
+    out.println();
     return;
   }
 
-  out.print(" profile=");
-  out.print(profile->key);
   out.print(" name=\"");
   out.print(profile->name);
   out.print("\" freqHz=");
@@ -158,6 +180,7 @@ bool beginDiagnostic(Stream &out) {
 
   if (radioResult != RADIOLIB_ERR_NONE) {
     radioState = FwRadioState::Error;
+    appliedProfileValid = false;
     out.print("[radio] SX1262 init failed code=");
     out.println(radioResult);
     printStatus(out);
@@ -167,12 +190,15 @@ bool beginDiagnostic(Stream &out) {
   radioResult = radio.setDio2AsRfSwitch(true);
   if (radioResult != RADIOLIB_ERR_NONE) {
     radioState = FwRadioState::Error;
+    appliedProfileValid = false;
     out.print("[radio] DIO2 RF switch setup failed code=");
     out.println(radioResult);
     printStatus(out);
     return false;
   }
 
+  appliedProfileId = profile->id;
+  appliedProfileValid = true;
   radioState = FwRadioState::Ready;
   out.println("[radio] SX1262 init PASS; no TX/RX started");
   printStatus(out);
@@ -188,8 +214,20 @@ bool transmitDiagnostic(Stream &out) {
     return false;
   }
 
-  if (radioState != FwRadioState::Ready) {
-    out.println("[radio] radio not ready; initializing first");
+  const FwRadioProfile *activeProfile = appliedProfile();
+  const bool profileChanged =
+      activeProfile == nullptr || activeProfile->id != profile->id;
+
+  if (radioState != FwRadioState::Ready || profileChanged) {
+    if (profileChanged && radioState == FwRadioState::Ready) {
+      out.print("[radio] selected profile changed: applied=");
+      out.print(appliedProfileKey());
+      out.print(" selected=");
+      out.println(profile->key);
+    } else {
+      out.println("[radio] radio not ready; initializing first");
+    }
+
     if (!beginDiagnostic(out)) {
       radioLastTxResult = radioResult;
       return false;
