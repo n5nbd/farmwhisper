@@ -347,6 +347,10 @@ constexpr const char *kSetupCss = R"CSS(
   font-weight: 700;
 }
 
+.fw-config-notice {
+  margin-bottom: 1rem;
+}
+
 .fw-link {
   color: #000080;
   font-weight: 700;
@@ -537,8 +541,8 @@ String setupRootPageHtml(
 
   if (noticeMessage != nullptr) {
     body += noticeIsError
-        ? R"HTML(        <p class="fw-error">)HTML"
-        : R"HTML(        <p class="fw-note">)HTML";
+        ? R"HTML(        <p class="fw-error fw-config-notice">)HTML"
+        : R"HTML(        <p class="fw-note fw-config-notice">)HTML";
     appendHtmlEscapedString(body, noticeMessage);
     body += R"HTML(</p>
 )HTML";
@@ -583,7 +587,7 @@ String setupRootPageHtml(
               </select>
             </div>
             <button class="fw-button fw-config-action" type="submit">Update</button>
-            <div class="fw-config-note">Bluetooth LE choices enable discovery advertising only. Services and data exchange are not implemented yet.</div>
+            <div class="fw-config-note">Bluetooth LE choices enable discovery advertising, the Device Information Service, and the FarmWhisper Configuration Service. Telemetry, notifications, streaming, and OTA are not implemented.</div>
           </form>
 
           <form class="fw-config-row" method="post" action="/radio-profile">
@@ -764,20 +768,22 @@ void handleSetupTransportModeChange() {
     setSetupNotice(
         String("Transport mode set to ") +
         fwTransportModeName(selectedId) +
-        ". Bluetooth LE discovery advertising will stop. "
+        ". Bluetooth LE advertising and services will stop. "
         "This setting remains active until changed.");
   } else if (fwTransportModeUsesLoRa(selectedId)) {
     setSetupNotice(
         String("Transport mode set to ") +
         fwTransportModeName(selectedId) +
-        ". Bluetooth LE discovery advertising will run alongside LoRa. "
-        "No Bluetooth LE services or data exchange are implemented yet.");
+        ". Bluetooth LE discovery, device information, and "
+        "configuration services will run alongside LoRa. "
+        "This setting remains active until changed.");
   } else {
     setSetupNotice(
         String("Transport mode set to ") +
         fwTransportModeName(selectedId) +
-        ". Bluetooth LE discovery advertising will start. "
-        "No Bluetooth LE services or data exchange are implemented yet.");
+        ". Bluetooth LE discovery, device information, and "
+        "configuration services will start. "
+        "This setting remains active until changed.");
   }
 
   redirectToRoot();
