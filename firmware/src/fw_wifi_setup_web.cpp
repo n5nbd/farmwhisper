@@ -105,8 +105,18 @@ constexpr const char *kSetupPinKey = "pin";
 char setupPin[kSetupPinDigits + 1] = "";
 bool setupPinConfigured = false;
 bool setupUnlocked = false;
-bool setupPinSavedNoticePending = false;
-bool setupPinClearedNoticePending = false;
+String setupNotice;
+bool setupNoticeIsError = false;
+
+void setSetupNotice(const String &message, bool isError = false) {
+  setupNotice = message;
+  setupNoticeIsError = isError;
+}
+
+void clearSetupNotice() {
+  setupNotice = "";
+  setupNoticeIsError = false;
+}
 
 bool isSixDigitPin(const String &pin) {
   if (pin.length() != kSetupPinDigits) {
@@ -496,8 +506,8 @@ void handleSetupCss() {
 
 String setupRootPageHtml(
     const FWWiFiSetupWeb::SetupStatus &status,
-    const char *pinMessage = nullptr,
-    bool pinError = false) {
+    const char *noticeMessage = nullptr,
+    bool noticeIsError = false) {
   /*
    * Setup PINs are optional.
    *
@@ -525,9 +535,9 @@ String setupRootPageHtml(
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
 )HTML";
 
-  if (pinMessage != nullptr) {
-    body += pinError ? R"HTML(        <p class="fw-error">)HTML" : R"HTML(        <p class="fw-note">)HTML";
-    body += pinMessage;
+  if (noticeMessage != nullptr) {
+    body += noticeIsError ? R"HTML(        <p class="fw-error">)HTML" : R"HTML(        <p class="fw-note">)HTML";
+    body += noticeMessage;
     body += R"HTML(</p>
 )HTML";
   }
@@ -671,17 +681,14 @@ void handleSetupRoot() {
 
   String body;
   if (!setupPinConfigured || setupUnlocked) {
-    const char *pinMessage = nullptr;
+    const bool noticeIsError = setupNoticeIsError;
+    const String notice = setupNotice;
+    clearSetupNotice();
 
-    if (setupPinSavedNoticePending) {
-      pinMessage = "PIN saved. Future setup sessions will require it.";
-      setupPinSavedNoticePending = false;
-    } else if (setupPinClearedNoticePending) {
-      pinMessage = "PIN cleared. Setup will open directly until a new PIN is saved.";
-      setupPinClearedNoticePending = false;
-    }
-
-    body = setupRootPageHtml(status, pinMessage, false);
+    body = setupRootPageHtml(
+        status,
+        notice.length() == 0 ? nullptr : notice.c_str(),
+        noticeIsError);
   } else {
     body = setupUnlockPageHtml(status, false);
   }
@@ -722,6 +729,8 @@ void handleSetupAliasChange() {
 
   if (alias.length() == 0) {
     fwClearDeviceAlias();
+    setSetupNotice(
+        "Device alias cleared. The default alias is now active.");
     redirectToRoot();
     return;
   }
@@ -734,6 +743,9 @@ void handleSetupAliasChange() {
     return;
   }
 
+  setSetupNotice(
+      String("Device alias saved as \"") + fwDeviceAlias() +
+      "\". This setting remains active until changed.");
   redirectToRoot();
 }
 
@@ -757,6 +769,11 @@ void handleSetupRadioProfileChange() {
     return;
   }
 
+  const FwRadioProfileId selectedId = fwSelectedRadioProfileId();
+  setSetupNotice(
+      String("Radio profile set to ") +
+      fwRadioProfileName(selectedId) +
+      ". This setting remains active until changed.");
   redirectToRoot();
 }
 
@@ -779,7 +796,8 @@ void handleSetupPinChange() {
     }
 
     clearSetupPinFromRam();
-    setupPinClearedNoticePending = true;
+    setSetupNotice(
+        "PIN cleared. Setup will open directly until a new PIN is saved.");
     redirectToRoot();
     return;
   }
@@ -807,7 +825,8 @@ void handleSetupPinChange() {
   setupPin[sizeof(setupPin) - 1] = '\0';
   setupPinConfigured = true;
   setupUnlocked = true;
-  setupPinSavedNoticePending = true;
+  setSetupNotice(
+      "PIN saved. Future setup sessions will require it.");
   redirectToRoot();
 }
 
@@ -903,8 +922,7 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
 
 void resetSession() {
   setupUnlocked = false;
-  setupPinSavedNoticePending = false;
-  setupPinClearedNoticePending = false;
+  clearSetupNotice();
 }
 
 bool clearStoredPin() {
@@ -913,7 +931,8 @@ bool clearStoredPin() {
   }
 
   clearSetupPinFromRam();
-  setupPinClearedNoticePending = true;
+  setSetupNotice(
+      "PIN cleared by physical recovery. Setup is open.");
   return true;
 }
 
