@@ -583,7 +583,7 @@ String setupRootPageHtml(
               </select>
             </div>
             <button class="fw-button fw-config-action" type="submit">Update</button>
-            <div class="fw-config-note">Bluetooth LE choices save intended configuration only. Bluetooth LE is not active yet.</div>
+            <div class="fw-config-note">Bluetooth LE choices enable discovery advertising only. Services and data exchange are not implemented yet.</div>
           </form>
 
           <form class="fw-config-row" method="post" action="/radio-profile">
@@ -760,16 +760,24 @@ void handleSetupTransportModeChange() {
   }
 
   const FwTransportModeId selectedId = fwSelectedTransportModeId();
-  if (selectedId == FwTransportModeId::LoRa) {
+  if (!fwTransportModeUsesBluetoothLe(selectedId)) {
     setSetupNotice(
         String("Transport mode set to ") +
         fwTransportModeName(selectedId) +
-        ". This setting remains active until changed.");
+        ". Bluetooth LE discovery advertising will stop. "
+        "This setting remains active until changed.");
+  } else if (fwTransportModeUsesLoRa(selectedId)) {
+    setSetupNotice(
+        String("Transport mode set to ") +
+        fwTransportModeName(selectedId) +
+        ". Bluetooth LE discovery advertising will run alongside LoRa. "
+        "No Bluetooth LE services or data exchange are implemented yet.");
   } else {
     setSetupNotice(
         String("Transport mode set to ") +
         fwTransportModeName(selectedId) +
-        ". Bluetooth LE is not active yet; this stores intended mode only.");
+        ". Bluetooth LE discovery advertising will start. "
+        "No Bluetooth LE services or data exchange are implemented yet.");
   }
 
   redirectToRoot();

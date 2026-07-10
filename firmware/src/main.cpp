@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "fw_ble.h"
 #include "fw_button.h"
 #include "fw_config.h"
 #include "fw_device_config.h"
@@ -21,6 +22,7 @@ void setup() {
 
   FWSerialDiag::printBootBanner();
   FWWiFiStatus::begin();
+  FWBLE::begin(Serial);
   FWStatusPixel::begin();
   FWButton::begin();
   FWExpansionGPIO::begin();
@@ -38,6 +40,7 @@ void setup() {
 
 void loop() {
   FWWiFiStatus::service(Serial);
+  FWBLE::service(Serial);
   FWSerialDiag::handleCommands();
   FWButton::update();
 
@@ -54,7 +57,9 @@ void loop() {
     } else {
       Serial.print("[transport] LoRa diagnostic skipped: selected mode ");
       Serial.print(fwTransportModeName(transportMode));
-      Serial.println(" disables LoRa; Bluetooth LE is not implemented yet");
+      Serial.println(
+          " disables LoRa; Bluetooth LE is discovery-only and has no "
+          "diagnostic data path yet");
     }
   }
 
