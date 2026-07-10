@@ -10,11 +10,13 @@ namespace {
 constexpr const char* kConfigNamespace = "fwdevcfg";
 constexpr const char* kAliasKey = "alias";
 constexpr const char* kRadioProfileKey = "radioProfile";
+constexpr const char* kTransportModeKey = "transportMode";
 constexpr const char* kDefaultDeviceAlias = "FarmWhisper device";
 
 bool configLoaded = false;
 char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
 FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
+FwTransportModeId selectedTransportModeId = FwTransportModeId::LoRa;
 
 void copyAlias(const char* value) {
   if (value == nullptr || value[0] == '\0') {
@@ -51,6 +53,12 @@ void useDefaultRadioProfile() {
       profile == nullptr ? FwRadioProfileId::UsDefault : profile->id;
 }
 
+void useDefaultTransportMode() {
+  const FwTransportMode* mode = fwDefaultTransportMode();
+  selectedTransportModeId =
+      mode == nullptr ? FwTransportModeId::LoRa : mode->id;
+}
+
 }  // namespace
 
 void fwLoadDeviceConfig() {
@@ -58,23 +66,28 @@ void fwLoadDeviceConfig() {
 
   copyAlias(kDefaultDeviceAlias);
   useDefaultRadioProfile();
+  useDefaultTransportMode();
 
   if (prefs.begin(kConfigNamespace, true)) {
-    const String storedAlias =
-        prefs.getString(kAliasKey, kDefaultDeviceAlias);
-
+    const String storedAlias = prefs.getString(kAliasKey, kDefaultDeviceAlias);
     if (isValidAlias(storedAlias.c_str())) {
       copyAlias(storedAlias.c_str());
     }
 
     const String storedRadioProfileKey =
         prefs.getString(kRadioProfileKey, "");
-
     const FwRadioProfile* storedRadioProfile =
         fwRadioProfileByKey(storedRadioProfileKey.c_str());
-
     if (storedRadioProfile != nullptr) {
       selectedRadioProfileId = storedRadioProfile->id;
+    }
+
+    const String storedTransportModeKey =
+        prefs.getString(kTransportModeKey, "");
+    const FwTransportMode* storedTransportMode =
+        fwTransportModeByKey(storedTransportModeKey.c_str());
+    if (storedTransportMode != nullptr) {
+      selectedTransportModeId = storedTransportMode->id;
     }
 
     prefs.end();
@@ -161,5 +174,46 @@ void fwClearSelectedRadioProfile() {
   }
 
   useDefaultRadioProfile();
+  configLoaded = true;
+}
+
+FwTransportModeId fwSelectedTransportModeId() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return selectedTransportModeId;
+}
+
+bool fwSetSelectedTransportModeByKey(const char* key) {
+  const FwTransportMode* mode = fwTransportModeByKey(key);
+  if (mode == nullptr) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kConfigNamespace, false)) {
+    return false;
+  }
+
+  const bool ok = prefs.putString(kTransportModeKey, mode->key) > 0;
+  prefs.end();
+
+  if (ok) {
+    selectedTransportModeId = mode->id;
+    configLoaded = true;
+  }
+
+  return ok;
+}
+
+void fwClearSelectedTransportMode() {
+  Preferences prefs;
+  if (prefs.begin(kConfigNamespace, false)) {
+    prefs.remove(kTransportModeKey);
+    prefs.end();
+  }
+
+  useDefaultTransportMode();
   configLoaded = true;
 }

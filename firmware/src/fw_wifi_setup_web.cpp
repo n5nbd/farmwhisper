@@ -1,13 +1,13 @@
 #include "fw_wifi_setup_web.h"
+
 #include "fw_device_config.h"
 #include "fw_radio_profile.h"
+#include "fw_transport_mode.h"
 
 #include <Preferences.h>
-
 #include <cstring>
 
 namespace {
-
 
 void appendHtmlEscapedString(String &out, const char *value) {
   if (value == nullptr) {
@@ -16,24 +16,24 @@ void appendHtmlEscapedString(String &out, const char *value) {
 
   for (const char *p = value; *p != '\0'; ++p) {
     switch (*p) {
-    case '&':
-      out += "&amp;";
-      break;
-    case '<':
-      out += "&lt;";
-      break;
-    case '>':
-      out += "&gt;";
-      break;
-    case '"':
-      out += "&quot;";
-      break;
-    case '\'':
-      out += "&#39;";
-      break;
-    default:
-      out += *p;
-      break;
+      case '&':
+        out += "&amp;";
+        break;
+      case '<':
+        out += "&lt;";
+        break;
+      case '>':
+        out += "&gt;";
+        break;
+      case '"':
+        out += "&quot;";
+        break;
+      case '\'':
+        out += "&#39;";
+        break;
+      default:
+        out += *p;
+        break;
     }
   }
 }
@@ -45,32 +45,31 @@ void appendJsonEscapedString(String &out, const char *value) {
 
   for (const char *p = value; *p != '\0'; ++p) {
     switch (*p) {
-    case '\\':
-      out += "\\\\";
-      break;
-    case '"':
-      out += "\\\"";
-      break;
-    case '\n':
-      out += "\\n";
-      break;
-    case '\r':
-      out += "\\r";
-      break;
-    case '\t':
-      out += "\\t";
-      break;
-    default:
-      if (static_cast<unsigned char>(*p) < 0x20) {
-        out += ' ';
-      } else {
-        out += *p;
-      }
-      break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(*p) < 0x20) {
+          out += ' ';
+        } else {
+          out += *p;
+        }
+        break;
     }
   }
 }
-
 
 void appendRadioProfileOptions(String &out) {
   const FwRadioProfileId selectedId = fwSelectedRadioProfileId();
@@ -84,13 +83,32 @@ void appendRadioProfileOptions(String &out) {
     out += R"HTML(<option value=")HTML";
     appendHtmlEscapedString(out, profile->key);
     out += "\"";
-
     if (profile->id == selectedId) {
       out += " selected";
     }
-
     out += ">";
     appendHtmlEscapedString(out, profile->name);
+    out += "</option>";
+  }
+}
+
+void appendTransportModeOptions(String &out) {
+  const FwTransportModeId selectedId = fwSelectedTransportModeId();
+
+  for (size_t i = 0; i < fwTransportModeCount(); ++i) {
+    const FwTransportMode *mode = fwTransportModeAt(i);
+    if (mode == nullptr) {
+      continue;
+    }
+
+    out += R"HTML(<option value=")HTML";
+    appendHtmlEscapedString(out, mode->key);
+    out += "\"";
+    if (mode->id == selectedId) {
+      out += " selected";
+    }
+    out += ">";
+    appendHtmlEscapedString(out, mode->name);
     out += "</option>";
   }
 }
@@ -140,27 +158,23 @@ void clearSetupPinFromRam() {
 
 bool saveSetupPinToNvs(const char *pin) {
   Preferences prefs;
-
   if (!prefs.begin(kSetupPrefsNamespace, false)) {
     return false;
   }
 
   const size_t written = prefs.putString(kSetupPinKey, pin);
   prefs.end();
-
   return written > 0;
 }
 
 bool clearSetupPinFromNvs() {
   Preferences prefs;
-
   if (!prefs.begin(kSetupPrefsNamespace, false)) {
     return false;
   }
 
   prefs.remove(kSetupPinKey);
   prefs.end();
-
   return true;
 }
 
@@ -168,13 +182,11 @@ void loadSetupPinFromNvs() {
   clearSetupPinFromRam();
 
   Preferences prefs;
-
   if (!prefs.begin(kSetupPrefsNamespace, false)) {
     return;
   }
 
   const String storedPin = prefs.getString(kSetupPinKey, "");
-
   if (isSixDigitPin(storedPin)) {
     storedPin.toCharArray(setupPin, sizeof(setupPin));
     setupPinConfigured = true;
@@ -198,6 +210,7 @@ constexpr const char *kSetupCss = R"CSS(
  * this stylesheet and any referenced assets without changing firmware logic or
  * the generated setup-page structure.
  */
+
 :root {
   color-scheme: light;
 }
@@ -300,7 +313,8 @@ constexpr const char *kSetupCss = R"CSS(
   font-weight: 700;
 }
 
-.fw-input {
+.fw-input,
+.fw-select {
   display: block;
   width: 100%;
   min-height: 2rem;
@@ -333,19 +347,15 @@ constexpr const char *kSetupCss = R"CSS(
   font-weight: 700;
 }
 
-
-
 .fw-link {
   color: #000080;
   font-weight: 700;
 }
 
-
-
-
 /* Generic FarmWhisper configuration control layout.
-   Each row has a full-width label/explanation line, then a control area and
-   an action button column. Text-only rows can span the full width. */
+ * Each row has a full-width label/explanation line, then a control area and an
+ * action button column. Text-only rows can span the full width.
+ */
 .fw-config-list {
   display: flex;
   flex-direction: column;
@@ -381,9 +391,6 @@ constexpr const char *kSetupCss = R"CSS(
 .fw-config-note {
   grid-column: 1 / -1;
 }
-
-
-
 )CSS";
 
 FWWiFiSetupWeb::SetupStatus currentStatus() {
@@ -422,10 +429,11 @@ const char *setupLockStateText() {
   return setupUnlocked ? "UNLOCKED" : "LOCKED";
 }
 
-String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPin) {
+String setupUnlockPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status,
+    bool badPin) {
   String body;
   body.reserve(2200);
-
   body += R"HTML(<!doctype html>
 <html lang="en">
 <head>
@@ -442,28 +450,23 @@ String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPi
 )HTML";
 
   if (badPin) {
-    body += R"HTML(
-      <p class="fw-error">Incorrect PIN.</p>
+    body += R"HTML(      <p class="fw-error">Incorrect PIN.</p>
 )HTML";
   }
 
-  body += R"HTML(
-      <section class="fw-section" aria-labelledby="fw-unlock-title">
+  body += R"HTML(      <section class="fw-section" aria-labelledby="fw-unlock-title">
         <h2 class="fw-section-title" id="fw-unlock-title">Local setup lock</h2>
-        <p class="fw-note">A local setup PIN is configured on this device.</p>
-
+        <p>A local setup PIN is configured on this device.</p>
         <form class="fw-form" method="post" action="/unlock">
           <div class="fw-field">
             <label class="fw-label" for="fw-pin">Setup PIN</label>
             <input class="fw-input" id="fw-pin" name="pin" type="password"
                    inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-                   autocomplete="off" autofocus required>
+                   autocomplete="off" required autofocus>
           </div>
-
           <button class="fw-button" type="submit">Unlock setup</button>
         </form>
       </section>
-
       <dl class="fw-status-grid">
         <dt>Device ID</dt>
         <dd>)HTML";
@@ -486,7 +489,6 @@ String setupUnlockPageHtml(const FWWiFiSetupWeb::SetupStatus &status, bool badPi
   body += String(status.remainingS);
   body += R"HTML( s</dd>
       </dl>
-
       <p class="fw-actions">
         <a class="fw-link" href="/status">View setup status JSON</a>
       </p>
@@ -516,8 +518,7 @@ String setupRootPageHtml(
    * the stored PIN and returns setup to the open/default state.
    */
   String body;
-  body.reserve(3400);
-
+  body.reserve(4600);
   body += R"HTML(<!doctype html>
 <html lang="en">
 <head>
@@ -530,51 +531,42 @@ String setupRootPageHtml(
   <main class="fw-window">
     <h1 class="fw-titlebar">FarmWhisper Setup</h1>
     <div class="fw-content">
-
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
 )HTML";
 
   if (noticeMessage != nullptr) {
-    body += noticeIsError ? R"HTML(        <p class="fw-error">)HTML" : R"HTML(        <p class="fw-note">)HTML";
-    body += noticeMessage;
+    body += noticeIsError
+        ? R"HTML(        <p class="fw-error">)HTML"
+        : R"HTML(        <p class="fw-note">)HTML";
+    appendHtmlEscapedString(body, noticeMessage);
     body += R"HTML(</p>
 )HTML";
   }
 
-  body += R"HTML(
-        <div class="fw-config-list">
+  body += R"HTML(        <div class="fw-config-list">
           <form class="fw-config-row" method="post" action="/pin">
-            <div class="fw-config-label">
-              <label for="fw-new-pin">New setup PIN</label>
-            </div>
-
+            <label class="fw-config-label" for="fw-new-pin">New setup PIN</label>
             <div class="fw-config-control">
               <input class="fw-input" id="fw-new-pin" name="pin" type="password"
                      inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-                     autocomplete="off" placeholder="blank for none">
+                     autocomplete="new-password">
             </div>
-
-            <div class="fw-config-action">
-              <button class="fw-button" type="submit">Update</button>
-            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">Use exactly 6 digits, or leave blank to clear the PIN.</div>
           </form>
 
           <form class="fw-config-row" method="post" action="/alias">
-            <div class="fw-config-label">
-              <label for="fw-device-alias">Device alias</label>
-            </div>
-
+            <label class="fw-config-label" for="fw-alias">Device alias</label>
             <div class="fw-config-control">
-              <input class="fw-input" id="fw-device-alias" name="alias" type="text"
-                     maxlength="32" autocomplete="off" value=")HTML";
+              <input class="fw-input" id="fw-alias" name="alias" type="text"
+                     maxlength="32" value=")HTML";
+  body += "\"";
   appendHtmlEscapedString(body, fwDeviceAlias());
-  body += R"HTML(">
+  body += R"HTML(" autocomplete="off">
             </div>
-
-            <div class="fw-config-action">
-              <button class="fw-button" type="submit">Update</button>
-            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">Leave blank to restore the default alias.</div>
           </form>
 
           <div class="fw-config-row">
@@ -582,26 +574,30 @@ String setupRootPageHtml(
             <div class="fw-config-note">Not implemented yet.</div>
           </div>
 
-          <form class="fw-config-row" method="post" action="/radio-profile">
-            <div class="fw-config-label">
-              <label for="fw-radio-profile">Radio profile</label>
-            </div>
-
+          <form class="fw-config-row" method="post" action="/transport-mode">
+            <label class="fw-config-label" for="fw-transport-mode">Transport mode</label>
             <div class="fw-config-control">
-              <select class="fw-input fw-select"
-                      id="fw-radio-profile"
-                      name="profile">)HTML";
+              <select class="fw-select" id="fw-transport-mode" name="mode">
+)HTML";
+  appendTransportModeOptions(body);
+  body += R"HTML(
+              </select>
+            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">Bluetooth LE choices save intended configuration only. Bluetooth LE is not active yet.</div>
+          </form>
+
+          <form class="fw-config-row" method="post" action="/radio-profile">
+            <label class="fw-config-label" for="fw-radio-profile">Radio profile</label>
+            <div class="fw-config-control">
+              <select class="fw-select" id="fw-radio-profile" name="profile">
+)HTML";
   appendRadioProfileOptions(body);
-  body += R"HTML(</select>
+  body += R"HTML(
+              </select>
             </div>
-
-            <div class="fw-config-action">
-              <button class="fw-button" type="submit">Update</button>
-            </div>
-
-            <div class="fw-config-note">
-              Radio settings are managed by firmware profiles.
-            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">Radio settings are managed by firmware profiles.</div>
           </form>
 
           <div class="fw-config-row">
@@ -609,64 +605,60 @@ String setupRootPageHtml(
             <div class="fw-config-note">Not implemented yet.</div>
           </div>
         </div>
+        <p class="fw-actions">
+          <a class="fw-link" href="/status">View setup status JSON</a>
+        </p>
       </section>
 
-      <p class="fw-actions">
-        <a class="fw-link" href="/status">View setup status JSON</a>
-      </p>
-
-      <section class="fw-section" aria-labelledby="fw-device-status-title">
-        <h2 class="fw-section-title" id="fw-device-status-title">Device status</h2>
-
-      <dl class="fw-status-grid">
-        <dt>AP smoke/setup</dt>
-        <dd>)HTML";
+      <section class="fw-section" aria-labelledby="fw-status-title">
+        <h2 class="fw-section-title" id="fw-status-title">Device status</h2>
+        <dl class="fw-status-grid">
+          <dt>AP smoke/setup</dt>
+          <dd>)HTML";
   body += status.apSmokeActive ? "ON" : "OFF";
   body += R"HTML(</dd>
-        <dt>Setup HTTP</dt>
-        <dd>)HTML";
+          <dt>Setup HTTP</dt>
+          <dd>)HTML";
   body += status.setupHttpActive ? "ON" : "OFF";
   body += R"HTML(</dd>
-        <dt>Setup lock</dt>
-        <dd>)HTML";
+          <dt>Setup lock</dt>
+          <dd>)HTML";
   body += setupLockStateText();
   body += R"HTML(</dd>
-        <dt>Device ID</dt>
-        <dd>)HTML";
+          <dt>Device ID</dt>
+          <dd>)HTML";
   body += status.deviceId;
   body += R"HTML(</dd>
-        <dt>Device alias</dt>
-        <dd>)HTML";
+          <dt>Device alias</dt>
+          <dd>)HTML";
   appendHtmlEscapedString(body, fwDeviceAlias());
   body += R"HTML(</dd>
-        <dt>SSID</dt>
-        <dd>)HTML";
+          <dt>SSID</dt>
+          <dd>)HTML";
   body += status.ssid;
   body += R"HTML(</dd>
-        <dt>IP</dt>
-        <dd>)HTML";
+          <dt>IP</dt>
+          <dd>)HTML";
   body += status.ip.toString();
   body += R"HTML(</dd>
-        <dt>Stations</dt>
-        <dd>)HTML";
+          <dt>Stations</dt>
+          <dd>)HTML";
   body += String(static_cast<unsigned int>(status.stations));
   body += R"HTML(</dd>
-        <dt>Age</dt>
-        <dd>)HTML";
+          <dt>Age</dt>
+          <dd>)HTML";
   body += String(status.ageS);
   body += R"HTML( s</dd>
-        <dt>Timeout</dt>
-        <dd>)HTML";
+          <dt>Timeout</dt>
+          <dd>)HTML";
   body += String(status.timeoutS);
   body += R"HTML( s</dd>
-        <dt>Remaining</dt>
-        <dd>)HTML";
+          <dt>Remaining</dt>
+          <dd>)HTML";
   body += String(status.remainingS);
   body += R"HTML( s</dd>
-      </dl>
-
+        </dl>
       </section>
-
     </div>
   </main>
 </body>
@@ -678,13 +670,12 @@ String setupRootPageHtml(
 
 void handleSetupRoot() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
-
   String body;
+
   if (!setupPinConfigured || setupUnlocked) {
     const bool noticeIsError = setupNoticeIsError;
     const String notice = setupNotice;
     clearSetupNotice();
-
     body = setupRootPageHtml(
         status,
         notice.length() == 0 ? nullptr : notice.c_str(),
@@ -704,7 +695,6 @@ void handleSetupUnlock() {
   }
 
   const String pin = setupServer->arg("pin");
-
   if (pin == setupPin) {
     setupUnlocked = true;
     redirectToRoot();
@@ -716,11 +706,11 @@ void handleSetupUnlock() {
   setupServer->send(403, "text/html", body);
 }
 
-
 void handleSetupAliasChange() {
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
-    setupServer->send(403, "text/plain", "FarmWhisper setup is locked");
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
     return;
   }
 
@@ -738,7 +728,8 @@ void handleSetupAliasChange() {
   if (!fwSetDeviceAlias(alias.c_str())) {
     sendNoStore();
     setupServer->send(
-        400, "text/plain",
+        400,
+        "text/plain",
         "Device alias must be blank or 1-32 printable characters.");
     return;
   }
@@ -746,6 +737,42 @@ void handleSetupAliasChange() {
   setSetupNotice(
       String("Device alias saved as \"") + fwDeviceAlias() +
       "\". This setting remains active until changed.");
+  redirectToRoot();
+}
+
+void handleSetupTransportModeChange() {
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  String modeKey = setupServer->arg("mode");
+  modeKey.trim();
+
+  if (!fwSetSelectedTransportModeByKey(modeKey.c_str())) {
+    sendNoStore();
+    setupServer->send(
+        400,
+        "text/plain",
+        "Unknown FarmWhisper transport mode.");
+    return;
+  }
+
+  const FwTransportModeId selectedId = fwSelectedTransportModeId();
+  if (selectedId == FwTransportModeId::LoRa) {
+    setSetupNotice(
+        String("Transport mode set to ") +
+        fwTransportModeName(selectedId) +
+        ". This setting remains active until changed.");
+  } else {
+    setSetupNotice(
+        String("Transport mode set to ") +
+        fwTransportModeName(selectedId) +
+        ". Bluetooth LE is not active yet; this stores intended mode only.");
+  }
+
   redirectToRoot();
 }
 
@@ -780,7 +807,8 @@ void handleSetupRadioProfileChange() {
 void handleSetupPinChange() {
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
-    setupServer->send(403, "text/plain", "FarmWhisper setup is locked");
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
     return;
   }
 
@@ -834,8 +862,7 @@ void handleSetupStatus() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  body.reserve(700);
-
+  body.reserve(850);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
@@ -848,37 +875,44 @@ void handleSetupStatus() {
   body += ",\n  \"setupPinConfigured\": ";
   body += setupPinConfigured ? "true" : "false";
   body += ",\n  \"setupPinStorage\": \"nvs_optional\"";
-  body += ",\n  \"setupPinRecovery\": \"button_hold_until_red_5_flashes\"";
-
+  body +=
+      ",\n  \"setupPinRecovery\": "
+      "\"button_hold_until_red_5_flashes\"";
   body += ",\n  \"deviceId\": \"";
   body += status.deviceId;
   body += "\"";
-
   body += ",\n  \"deviceAlias\": \"";
   appendJsonEscapedString(body, fwDeviceAlias());
   body += "\"";
 
   const FwRadioProfileId selectedRadioProfileId =
       fwSelectedRadioProfileId();
-
   body += ",\n  \"radioProfileKey\": \"";
   appendJsonEscapedString(
       body, fwRadioProfileKey(selectedRadioProfileId));
   body += "\"";
-
   body += ",\n  \"radioProfileName\": \"";
   appendJsonEscapedString(
       body, fwRadioProfileName(selectedRadioProfileId));
   body += "\"";
 
+  const FwTransportModeId selectedTransportModeId =
+      fwSelectedTransportModeId();
+  body += ",\n  \"transportModeKey\": \"";
+  appendJsonEscapedString(
+      body, fwTransportModeKey(selectedTransportModeId));
+  body += "\"";
+  body += ",\n  \"transportModeName\": \"";
+  appendJsonEscapedString(
+      body, fwTransportModeName(selectedTransportModeId));
+  body += "\"";
+
   body += ",\n  \"ssid\": \"";
   body += status.ssid;
   body += "\"";
-
   body += ",\n  \"ip\": \"";
   body += status.ip.toString();
   body += "\"";
-
   body += ",\n  \"stations\": ";
   body += String(static_cast<unsigned int>(status.stations));
   body += ",\n  \"ageS\": ";
@@ -893,9 +927,9 @@ void handleSetupStatus() {
   setupServer->send(200, "application/json", body);
 }
 
-
 void handleSetupNotFound() {
-  setupServer->send(404, "text/plain", "FarmWhisper setup placeholder: not found");
+  setupServer->send(
+      404, "text/plain", "FarmWhisper setup placeholder: not found");
 }
 
 }  // namespace
@@ -913,9 +947,9 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
   server.on("/unlock", HTTP_POST, handleSetupUnlock);
   server.on("/alias", HTTP_POST, handleSetupAliasChange);
   server.on(
-      "/radio-profile",
-      HTTP_POST,
-      handleSetupRadioProfileChange);
+      "/transport-mode", HTTP_POST, handleSetupTransportModeChange);
+  server.on(
+      "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
