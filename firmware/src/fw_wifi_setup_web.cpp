@@ -647,8 +647,6 @@ String setupRootPageHtml(
         </p>
       </section>
 
-      <section class="fw-section" aria-labelledby="fw-status-title">
-      </section>
     </div>
   </main>
 </body>
