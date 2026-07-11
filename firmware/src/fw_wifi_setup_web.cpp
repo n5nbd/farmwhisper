@@ -315,30 +315,55 @@ constexpr const char *kSetupCss = R"CSS(
 }
 
 .fw-input,
-.fw-select {
-  display: block;
-  width: 100%;
+.fw-select,
+.fw-button {
+  height: 2rem;
   min-height: 2rem;
-  padding: 0.3rem 0.4rem;
-  color: #000;
-  background: #fff;
-  border-color: #404040 #fff #fff #404040;
   border-style: solid;
   border-width: 2px;
+  border-radius: 0;
   font: inherit;
 }
 
+.fw-input,
+.fw-select {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  color: #000;
+  background: #fff;
+  border-color: #404040 #fff #fff #404040;
+}
+
+.fw-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.8rem;
+  background-image:
+      linear-gradient(45deg, transparent 50%, #000 50%),
+      linear-gradient(135deg, #000 50%, transparent 50%);
+  background-position:
+      calc(100% - 0.85rem) 0.8rem,
+      calc(100% - 0.55rem) 0.8rem;
+  background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+
 .fw-button {
-  min-height: 2rem;
   margin-top: 0.75rem;
   padding: 0.25rem 0.75rem;
   color: #000;
   background: #c0c0c0;
   border-color: #fff #404040 #404040 #fff;
-  border-style: solid;
-  border-width: 2px;
-  font: inherit;
   font-weight: 700;
+}
+
+.fw-button:active {
+  border-color: #404040 #fff #fff #404040;
+}
+
+.fw-config-row .fw-button {
+  margin-top: 0;
 }
 
 .fw-error {
