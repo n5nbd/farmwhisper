@@ -1,6 +1,7 @@
 #include "fw_wifi_setup_web.h"
 
 #include "fw_device_config.h"
+#include "fw_radio.h"
 #include "fw_radio_profile.h"
 #include "fw_transport_mode.h"
 
@@ -598,6 +599,12 @@ String setupRootPageHtml(
             <div class="fw-config-note">Radio settings are managed by firmware profiles.</div>
           </form>
 
+          <form class="fw-config-row" method="post" action="/diagnostic-flood">
+            <div class="fw-config-label">Diagnostic flood</div>
+            <div class="fw-config-control">Send packets for 3 minutes</div>
+            <button class="fw-button fw-config-action" type="submit">Start</button>
+          </form>
+
           <div class="fw-config-row">
             <div class="fw-config-label">Sensor calibration</div>
             <div class="fw-config-note">Not implemented yet.</div>
@@ -812,6 +819,38 @@ void handleSetupRadioProfileChange() {
   redirectToRoot();
 }
 
+void handleSetupDiagnosticFlood() {
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  const FwTransportModeId selectedId = fwSelectedTransportModeId();
+  if (!fwTransportModeUsesLoRa(selectedId)) {
+    setSetupNotice(
+        "Diagnostic flood not started. "
+        "The selected transport mode does not include LoRa.",
+        true);
+    redirectToRoot();
+    return;
+  }
+
+  if (!FWRadio::startDiagnosticBurst(Serial)) {
+    setSetupNotice(
+        "Diagnostic flood is already running.",
+        true);
+    redirectToRoot();
+    return;
+  }
+
+  setSetupNotice(
+      "Diagnostic flood started. "
+      "Sending packets for about 3 minutes.");
+  redirectToRoot();
+}
+
 void handleSetupPinChange() {
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
@@ -958,6 +997,8 @@ void registerRoutes(WebServer &server, StatusProvider statusProvider) {
       "/transport-mode", HTTP_POST, handleSetupTransportModeChange);
   server.on(
       "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
+  server.on(
+      "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
