@@ -5,6 +5,7 @@
 #include "fw_radio_profile.h"
 #include "fw_transport_mode.h"
 
+#include "fw_tof.h"
 #include <Preferences.h>
 #include <cstring>
 
@@ -127,6 +128,16 @@ bool setupPinConfigured = false;
 bool setupUnlocked = false;
 String setupNotice;
 bool setupNoticeIsError = false;
+
+uint16_t pendingEmptyMm = 0;
+uint16_t pendingEmptySpanMm = 0;
+bool pendingEmptyValid = false;
+
+void clearPendingCalibration() {
+  pendingEmptyMm = 0;
+  pendingEmptySpanMm = 0;
+  pendingEmptyValid = false;
+}
 
 void setSetupNotice(const String &message, bool isError = false) {
   setupNotice = message;
@@ -707,10 +718,9 @@ String calibrationIntroPageHtml(
   body += R"HTML( seconds</strong>
         </p>
 
-        <p class="fw-actions">
-          Empty and full measurement capture will be added in the next
-          calibration slice.
-        </p>
+        <form class="fw-form" method="post" action="/calibration/start">
+          <button class="fw-button" type="submit">Start calibration</button>
+        </form>
 
         <p class="fw-actions">
           <a class="fw-link" href="/">Return to setup</a>
@@ -768,6 +778,305 @@ void handleCalibrationIntro() {
         "FarmWhisper setup is locked");
     return;
   }
+
+  const String body = calibrationIntroPageHtml(currentStatus());
+  sendNoStore();
+  setupServer->send(200, "text/html", body);
+}
+
+String calibrationEmptyPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status,
+    const char *errorMessage = nullptr) {
+  String body;
+  body.reserve(3600);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Empty Calibration</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
+    <div class="fw-content">
+      <section class="fw-section" aria-labelledby="fw-calibration-empty-title">
+        <h2 class="fw-section-title" id="fw-calibration-empty-title">
+          Record empty reference
+        </h2>
+)HTML";
+
+  if (errorMessage != nullptr) {
+    body += R"HTML(        <p class="fw-error">)HTML";
+    appendHtmlEscapedString(body, errorMessage);
+    body += R"HTML(</p>
+)HTML";
+  }
+
+  body += R"HTML(
+        <p class="fw-intro">
+          Install the sensor in its normal operating position with the
+          bucket, bin, or container empty.
+        </p>
+
+        <p class="fw-note">
+          Wait for the FarmWhisper status light to turn green. Green means
+          the sensor has a stable group of measurements ready to record.
+        </p>
+
+        <p class="fw-note">
+          <strong>You have up to 5 minutes to complete this step.</strong>
+          Recording the empty reference restarts the setup timer. If the
+          setup session expires, unfinished calibration is discarded.
+        </p>
+
+        <p class="fw-note">
+          Setup session remaining:
+          <strong id="fw-session-countdown">)HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML( seconds</strong>
+        </p>
+
+        <form class="fw-form" method="post"
+              action="/calibration/record-empty">
+          <button class="fw-button" type="submit">Record empty</button>
+        </form>
+
+        <form class="fw-form" method="post"
+              action="/calibration/restart">
+          <button class="fw-button" type="submit">Start over</button>
+        </form>
+
+        <p class="fw-actions">
+          <a class="fw-link" href="/">Cancel and return to setup</a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var remaining = )HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML(;
+    var display = document.getElementById("fw-session-countdown");
+
+    function render() {
+      if (remaining <= 0) {
+        display.textContent = "expired";
+        return;
+      }
+
+      var minutes = Math.floor(remaining / 60);
+      var seconds = remaining % 60;
+      display.textContent =
+          minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    render();
+
+    window.setInterval(function () {
+      if (remaining > 0) {
+        --remaining;
+        render();
+      }
+    }, 1000);
+  }());
+  </script>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
+String calibrationEmptyRecordedPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status) {
+  String body;
+  body.reserve(3200);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Empty Reference Recorded</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
+    <div class="fw-content">
+      <section class="fw-section"
+               aria-labelledby="fw-calibration-empty-recorded-title">
+        <h2 class="fw-section-title"
+            id="fw-calibration-empty-recorded-title">
+          Empty reference recorded
+        </h2>
+
+        <p class="fw-intro">
+          FarmWhisper recorded the stable empty reference.
+        </p>
+
+        <dl class="fw-status-grid">
+          <dt>Empty distance</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptyMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptySpanMm);
+
+  body += R"HTML( mm</dd>
+        </dl>
+
+        <p class="fw-note">
+          This value is temporary and has not been written to device storage.
+          The full-reference step will be added next.
+        </p>
+
+        <p class="fw-note">
+          Setup session remaining:
+          <strong id="fw-session-countdown">)HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML( seconds</strong>
+        </p>
+
+        <form class="fw-form" method="post"
+              action="/calibration/start">
+          <button class="fw-button" type="submit">
+            Record empty again
+          </button>
+        </form>
+
+        <form class="fw-form" method="post"
+              action="/calibration/restart">
+          <button class="fw-button" type="submit">Start over</button>
+        </form>
+
+        <p class="fw-actions">
+          <a class="fw-link" href="/">Return to setup</a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var remaining = )HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML(;
+    var display = document.getElementById("fw-session-countdown");
+
+    function render() {
+      if (remaining <= 0) {
+        display.textContent = "expired";
+        return;
+      }
+
+      var minutes = Math.floor(remaining / 60);
+      var seconds = remaining % 60;
+      display.textContent =
+          minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    render();
+
+    window.setInterval(function () {
+      if (remaining > 0) {
+        --remaining;
+        render();
+      }
+    }, 1000);
+  }());
+  </script>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
+bool calibrationAccessAllowed() {
+  return !setupPinConfigured || setupUnlocked;
+}
+
+void sendCalibrationLocked() {
+  sendNoStore();
+  setupServer->send(
+      403,
+      "text/plain",
+      "FarmWhisper setup is locked");
+}
+
+void handleCalibrationStart() {
+  noteFormSubmitted();
+
+  if (!calibrationAccessAllowed()) {
+    sendCalibrationLocked();
+    return;
+  }
+
+  clearPendingCalibration();
+
+  const String body = calibrationEmptyPageHtml(currentStatus());
+  sendNoStore();
+  setupServer->send(200, "text/html", body);
+}
+
+void handleCalibrationRecordEmpty() {
+  noteFormSubmitted();
+
+  if (!calibrationAccessAllowed()) {
+    sendCalibrationLocked();
+    return;
+  }
+
+  uint16_t avgMm = 0;
+  uint16_t spanMm = 0;
+
+  if (!FWToF::stableReading(avgMm, spanMm)) {
+    const String body = calibrationEmptyPageHtml(
+        currentStatus(),
+        "Reading not recorded. Wait for the status light to turn green "
+        "and try again.");
+    sendNoStore();
+    setupServer->send(409, "text/html", body);
+    return;
+  }
+
+  pendingEmptyMm = avgMm;
+  pendingEmptySpanMm = spanMm;
+  pendingEmptyValid = true;
+
+  const String body =
+      calibrationEmptyRecordedPageHtml(currentStatus());
+  sendNoStore();
+  setupServer->send(200, "text/html", body);
+}
+
+void handleCalibrationRestart() {
+  noteFormSubmitted();
+
+  if (!calibrationAccessAllowed()) {
+    sendCalibrationLocked();
+    return;
+  }
+
+  clearPendingCalibration();
 
   const String body = calibrationIntroPageHtml(currentStatus());
   sendNoStore();
@@ -1111,6 +1420,18 @@ void registerRoutes(
   server.on(
       "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
     server.on("/calibration", HTTP_POST, handleCalibrationIntro);
+  server.on(
+      "/calibration/start",
+      HTTP_POST,
+      handleCalibrationStart);
+  server.on(
+      "/calibration/record-empty",
+      HTTP_POST,
+      handleCalibrationRecordEmpty);
+  server.on(
+      "/calibration/restart",
+      HTTP_POST,
+      handleCalibrationRestart);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }

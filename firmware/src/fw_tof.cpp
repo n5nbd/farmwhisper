@@ -197,4 +197,15 @@ uint16_t lastValidMm() {
   return lastValidTofMm;
 }
 
+bool stableReading(uint16_t &avgMm, uint16_t &spanMm) {
+  avgMm = 0;
+  spanMm = 0;
+
+  if (componentStatus != ComponentStatus::TofStable) {
+    return false;
+  }
+
+  return FWToFStability::compute(avgMm, spanMm);
+}
+
 }  // namespace FWToF

@@ -32,4 +32,10 @@ uint32_t timeoutCount();
 bool hasLastValid();
 uint16_t lastValidMm();
 
+/*
+ * Return the current stability-window average and span only while the ToF
+ * owner considers the reading stable.
+ */
+bool stableReading(uint16_t &avgMm, uint16_t &spanMm);
+
 }  // namespace FWToF
