@@ -52,19 +52,9 @@ void loop() {
   }
 
   if (FWButton::consumeDoublePressEvent()) {
-    const FwTransportModeId transportMode = fwSelectedTransportModeId();
-
-    if (!fwTransportModeUsesLoRa(transportMode)) {
-      Serial.print(
-          "[transport] LoRa diagnostic burst skipped: selected mode ");
-      Serial.print(fwTransportModeName(transportMode));
-      Serial.println(" disables LoRa");
-    } else if (FWRadio::diagnosticBurstActive()) {
-      FWRadio::cancelDiagnosticBurst(
-          Serial, "button double press");
-    } else {
-      FWRadio::startDiagnosticBurst(Serial);
-    }
+    fwClearCalibration();
+    Serial.println(
+        "[calibration] saved calibration cleared by button double press");
   }
 
   if (FWButton::consumeTriplePressEvent()) {

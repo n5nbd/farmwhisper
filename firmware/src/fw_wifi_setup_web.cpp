@@ -128,6 +128,12 @@ bool setupPinConfigured = false;
 bool setupUnlocked = false;
 String setupNotice;
 bool setupNoticeIsError = false;
+bool uncalibratedPromptAcknowledged = false;
+
+constexpr const char *kUncalibratedWarning =
+    "This unit has not been calibrated. It must be calibrated before it can "
+    "produce meaningful data. Please install the sensor where it will live "
+    "and begin the calibration procedure.";
 
 constexpr uint16_t kCalibrationMinUsableSeparationMm = 100;
 
@@ -517,6 +523,12 @@ void redirectToRoot() {
   setupServer->send(303, "text/plain", "");
 }
 
+void redirectToStatus() {
+  sendNoStore();
+  setupServer->sendHeader("Location", "/status");
+  setupServer->send(303, "text/plain", "");
+}
+
 const char *setupLockStateText() {
   if (!setupPinConfigured) {
     return "OPEN";
@@ -585,9 +597,11 @@ String setupUnlockPageHtml(
   body += String(status.remainingS);
   body += R"HTML( s</dd>
       </dl>
-      <p class="fw-actions">
-        <a class="fw-link" href="/status">View setup status JSON</a>
-      </p>
+      <form class="fw-form" method="post" action="/status">
+        <button class="fw-button" type="submit">
+          View setup status JSON
+        </button>
+      </form>
     </div>
   </main>
 </body>
@@ -630,6 +644,13 @@ String setupRootPageHtml(
       <section class="fw-section" aria-labelledby="fw-config-title">
         <h2 class="fw-section-title" id="fw-config-title">FarmWhisper configuration</h2>
 )HTML";
+
+  if (!fwCalibrationConfigured()) {
+    body += R"HTML(        <p class="fw-error fw-config-notice">)HTML";
+    appendHtmlEscapedString(body, kUncalibratedWarning);
+    body += R"HTML(</p>
+)HTML";
+  }
 
   if (noticeMessage != nullptr) {
     body += noticeIsError
@@ -702,9 +723,11 @@ String setupRootPageHtml(
             <button class="fw-button fw-config-action" type="submit">Calibrate</button>
           </form>
         </div>
-        <p class="fw-actions">
-          <a class="fw-link" href="/status">View setup status JSON</a>
-        </p>
+        <form class="fw-form" method="post" action="/status">
+          <button class="fw-button" type="submit">
+            View setup status JSON
+          </button>
+        </form>
       </section>
 
     </div>
@@ -717,7 +740,8 @@ String setupRootPageHtml(
 }
 
 String calibrationIntroPageHtml(
-    const FWWiFiSetupWeb::SetupStatus &status) {
+    const FWWiFiSetupWeb::SetupStatus &status,
+    const char *errorMessage = nullptr) {
   String body;
   body.reserve(3000);
 
@@ -735,7 +759,16 @@ String calibrationIntroPageHtml(
     <div class="fw-content">
       <section class="fw-section" aria-labelledby="fw-calibration-title">
         <h2 class="fw-section-title" id="fw-calibration-title">Before you begin</h2>
+)HTML";
 
+  if (errorMessage != nullptr) {
+    body += R"HTML(        <p class="fw-error">)HTML";
+    appendHtmlEscapedString(body, errorMessage);
+    body += R"HTML(</p>
+)HTML";
+  }
+
+  body += R"HTML(
         <p class="fw-intro">
           Calibration records an empty reference and a full reference for this
           container.
@@ -770,9 +803,10 @@ String calibrationIntroPageHtml(
           <button class="fw-button" type="submit">Start calibration</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -827,7 +861,9 @@ void handleCalibrationIntro() {
     return;
   }
 
-  const String body = calibrationIntroPageHtml(currentStatus());
+  const String body = calibrationIntroPageHtml(
+      currentStatus(),
+      fwCalibrationConfigured() ? nullptr : kUncalibratedWarning);
   sendNoStore();
   setupServer->send(200, "text/html", body);
 }
@@ -899,9 +935,10 @@ String calibrationEmptyPageHtml(
           <button class="fw-button" type="submit">Start over</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Cancel and return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Cancel and return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1020,9 +1057,10 @@ String calibrationEmptyRecordedPageHtml(
           <button class="fw-button" type="submit">Start over</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1219,9 +1257,10 @@ String calibrationFullPageHtml(
           <button class="fw-button" type="submit">Start over</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Cancel and return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Cancel and return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1368,9 +1407,10 @@ String calibrationReviewPageHtml(
           <button class="fw-button" type="submit">Start over</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1517,9 +1557,10 @@ String calibrationRejectedPageHtml(
           <button class="fw-button" type="submit">Start over</button>
         </form>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1622,9 +1663,10 @@ String calibrationSavedPageHtml(
   body += R"HTML( seconds</strong>
         </p>
 
-        <p class="fw-actions">
-          <a class="fw-link" href="/">Return to setup</a>
-        </p>
+        <form class="fw-form" method="post"
+              action="/calibration/return-to-setup">
+          <button class="fw-button" type="submit">Return to setup</button>
+        </form>
       </section>
     </div>
   </main>
@@ -1797,18 +1839,42 @@ void handleCalibrationSave() {
   setupServer->send(200, "text/html", body);
 }
 
+void handleCalibrationReturnToSetup() {
+  noteFormSubmitted();
+
+  if (!calibrationAccessAllowed()) {
+    sendCalibrationLocked();
+    return;
+  }
+
+  uncalibratedPromptAcknowledged = true;
+  redirectToRoot();
+}
+
+void handleSetupStatusOpen() {
+  noteFormSubmitted();
+  redirectToStatus();
+}
+
 void handleSetupRoot() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
   String body;
 
   if (!setupPinConfigured || setupUnlocked) {
-    const bool noticeIsError = setupNoticeIsError;
-    const String notice = setupNotice;
-    clearSetupNotice();
-    body = setupRootPageHtml(
-        status,
-        notice.length() == 0 ? nullptr : notice.c_str(),
-        noticeIsError);
+    if (!fwCalibrationConfigured() &&
+        !uncalibratedPromptAcknowledged) {
+      body = calibrationIntroPageHtml(
+          status,
+          kUncalibratedWarning);
+    } else {
+      const bool noticeIsError = setupNoticeIsError;
+      const String notice = setupNotice;
+      clearSetupNotice();
+      body = setupRootPageHtml(
+          status,
+          notice.length() == 0 ? nullptr : notice.c_str(),
+          noticeIsError);
+    }
   } else {
     body = setupUnlockPageHtml(status, false);
   }
@@ -2132,6 +2198,7 @@ void registerRoutes(
   server.on("/", HTTP_GET, handleSetupRoot);
   server.on("/setup.css", HTTP_GET, handleSetupCss);
   server.on("/status", HTTP_GET, handleSetupStatus);
+  server.on("/status", HTTP_POST, handleSetupStatusOpen);
   server.on("/unlock", HTTP_POST, handleSetupUnlock);
   server.on("/alias", HTTP_POST, handleSetupAliasChange);
   server.on(
@@ -2162,6 +2229,10 @@ void registerRoutes(
       HTTP_POST,
       handleCalibrationSave);
   server.on(
+      "/calibration/return-to-setup",
+      HTTP_POST,
+      handleCalibrationReturnToSetup);
+  server.on(
       "/calibration/restart",
       HTTP_POST,
       handleCalibrationRestart);
@@ -2171,6 +2242,7 @@ void registerRoutes(
 
 void resetSession() {
   setupUnlocked = false;
+  uncalibratedPromptAcknowledged = false;
   clearSetupNotice();
 }
 
