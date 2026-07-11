@@ -129,6 +129,8 @@ bool setupUnlocked = false;
 String setupNotice;
 bool setupNoticeIsError = false;
 
+constexpr uint16_t kCalibrationMinUsableSeparationMm = 100;
+
 uint16_t pendingEmptyMm = 0;
 uint16_t pendingEmptySpanMm = 0;
 bool pendingEmptyValid = false;
@@ -145,6 +147,44 @@ void clearPendingCalibration() {
   pendingFullMm = 0;
   pendingFullSpanMm = 0;
   pendingFullValid = false;
+}
+
+enum class CalibrationGeometryResult : uint8_t {
+  Valid,
+  MissingReference,
+  FullNotCloser,
+  RangeTooSmall,
+};
+
+uint16_t pendingCalibrationDifferenceMm() {
+  return pendingEmptyMm >= pendingFullMm
+      ? pendingEmptyMm - pendingFullMm
+      : pendingFullMm - pendingEmptyMm;
+}
+
+uint16_t pendingCalibrationUsableRangeMm() {
+  if (pendingFullMm >= pendingEmptyMm) {
+    return 0;
+  }
+
+  return pendingEmptyMm - pendingFullMm;
+}
+
+CalibrationGeometryResult validatePendingCalibrationGeometry() {
+  if (!pendingEmptyValid || !pendingFullValid) {
+    return CalibrationGeometryResult::MissingReference;
+  }
+
+  if (pendingFullMm >= pendingEmptyMm) {
+    return CalibrationGeometryResult::FullNotCloser;
+  }
+
+  if (pendingCalibrationUsableRangeMm() <
+      kCalibrationMinUsableSeparationMm) {
+    return CalibrationGeometryResult::RangeTooSmall;
+  }
+
+  return CalibrationGeometryResult::Valid;
 }
 
 void setSetupNotice(const String &message, bool isError = false) {
@@ -1224,17 +1264,17 @@ String calibrationFullPageHtml(
   return body;
 }
 
-String calibrationFullRecordedPageHtml(
+String calibrationReviewPageHtml(
     const FWWiFiSetupWeb::SetupStatus &status) {
   String body;
-  body.reserve(3800);
+  body.reserve(4300);
 
   body += R"HTML(<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FarmWhisper Calibration Measurements</title>
+  <title>FarmWhisper Calibration Review</title>
   <link rel="stylesheet" href="/setup.css">
 </head>
 <body class="fw-page">
@@ -1242,14 +1282,14 @@ String calibrationFullRecordedPageHtml(
     <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
     <div class="fw-content">
       <section class="fw-section"
-               aria-labelledby="fw-calibration-measurements-title">
+               aria-labelledby="fw-calibration-review-title">
         <h2 class="fw-section-title"
-            id="fw-calibration-measurements-title">
-          Calibration measurements recorded
+            id="fw-calibration-review-title">
+          Review calibration
         </h2>
 
         <p class="fw-intro">
-          FarmWhisper recorded stable empty and full reference measurements.
+          The empty and full references passed the calibration geometry checks.
         </p>
 
         <dl class="fw-status-grid">
@@ -1259,16 +1299,22 @@ String calibrationFullRecordedPageHtml(
   body += String(pendingEmptyMm);
 
   body += R"HTML( mm</dd>
-          <dt>Empty measurement span</dt>
-          <dd>)HTML";
-
-  body += String(pendingEmptySpanMm);
-
-  body += R"HTML( mm</dd>
           <dt>Full distance</dt>
           <dd>)HTML";
 
   body += String(pendingFullMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Usable range</dt>
+          <dd>)HTML";
+
+  body += String(pendingCalibrationUsableRangeMm());
+
+  body += R"HTML( mm</dd>
+          <dt>Empty measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptySpanMm);
 
   body += R"HTML( mm</dd>
           <dt>Full measurement span</dt>
@@ -1280,9 +1326,295 @@ String calibrationFullRecordedPageHtml(
         </dl>
 
         <p class="fw-note">
-          These measurements are still temporary and have not been written to
-          device storage. Geometry validation and saving will be added in the
-          next calibration slice.
+          These values are still temporary and have not been written to device
+          storage.
+        </p>
+
+        <p class="fw-note">
+          Setup session remaining:
+          <strong id="fw-session-countdown">)HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML( seconds</strong>
+        </p>
+
+        <form class="fw-form" method="post"
+              action="/calibration/save">
+          <button class="fw-button" type="submit">
+            Save calibration
+          </button>
+        </form>
+
+        <form class="fw-form" method="post"
+              action="/calibration/full">
+          <button class="fw-button" type="submit">
+            Record full again
+          </button>
+        </form>
+
+        <form class="fw-form" method="post"
+              action="/calibration/restart">
+          <button class="fw-button" type="submit">Start over</button>
+        </form>
+
+        <p class="fw-actions">
+          <a class="fw-link" href="/">Return to setup</a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var remaining = )HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML(;
+    var display = document.getElementById("fw-session-countdown");
+
+    function render() {
+      if (remaining <= 0) {
+        display.textContent = "expired";
+        return;
+      }
+
+      var minutes = Math.floor(remaining / 60);
+      var seconds = remaining % 60;
+      display.textContent =
+          minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    render();
+
+    window.setInterval(function () {
+      if (remaining > 0) {
+        --remaining;
+        render();
+      }
+    }, 1000);
+  }());
+  </script>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
+String calibrationRejectedPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status,
+    CalibrationGeometryResult geometryResult) {
+  String body;
+  body.reserve(4500);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Calibration Rejected</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
+    <div class="fw-content">
+      <section class="fw-section"
+               aria-labelledby="fw-calibration-rejected-title">
+        <h2 class="fw-section-title"
+            id="fw-calibration-rejected-title">
+          Calibration readings rejected
+        </h2>
+
+        <p class="fw-error">)HTML";
+
+  if (geometryResult == CalibrationGeometryResult::FullNotCloser) {
+    body +=
+        "The full reference must be closer to the sensor than the empty "
+        "reference.";
+  } else {
+    body +=
+        "The empty and full references are too close together to provide a "
+        "usable calibration range.";
+  }
+
+  body += R"HTML(</p>
+
+        <dl class="fw-status-grid">
+          <dt>Empty distance</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptyMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Full distance</dt>
+          <dd>)HTML";
+
+  body += String(pendingFullMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Measured difference</dt>
+          <dd>)HTML";
+
+  body += String(pendingCalibrationDifferenceMm());
+
+  body += R"HTML( mm</dd>
+          <dt>Minimum usable range</dt>
+          <dd>)HTML";
+
+  body += String(kCalibrationMinUsableSeparationMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Empty measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptySpanMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Full measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingFullSpanMm);
+
+  body += R"HTML( mm</dd>
+        </dl>
+
+        <p class="fw-note">
+          The measurements remain temporary. Record the full reference again
+          or start over.
+        </p>
+
+        <p class="fw-note">
+          Setup session remaining:
+          <strong id="fw-session-countdown">)HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML( seconds</strong>
+        </p>
+
+        <form class="fw-form" method="post"
+              action="/calibration/full">
+          <button class="fw-button" type="submit">
+            Record full again
+          </button>
+        </form>
+
+        <form class="fw-form" method="post"
+              action="/calibration/restart">
+          <button class="fw-button" type="submit">Start over</button>
+        </form>
+
+        <p class="fw-actions">
+          <a class="fw-link" href="/">Return to setup</a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var remaining = )HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML(;
+    var display = document.getElementById("fw-session-countdown");
+
+    function render() {
+      if (remaining <= 0) {
+        display.textContent = "expired";
+        return;
+      }
+
+      var minutes = Math.floor(remaining / 60);
+      var seconds = remaining % 60;
+      display.textContent =
+          minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    render();
+
+    window.setInterval(function () {
+      if (remaining > 0) {
+        --remaining;
+        render();
+      }
+    }, 1000);
+  }());
+  </script>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
+String calibrationSaveNotImplementedPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status) {
+  String body;
+  body.reserve(4100);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Calibration Save</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
+    <div class="fw-content">
+      <section class="fw-section"
+               aria-labelledby="fw-calibration-save-title">
+        <h2 class="fw-section-title"
+            id="fw-calibration-save-title">
+          Saving not implemented yet
+        </h2>
+
+        <p class="fw-error">
+          No calibration values were written to device storage.
+        </p>
+
+        <dl class="fw-status-grid">
+          <dt>Empty distance</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptyMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Full distance</dt>
+          <dd>)HTML";
+
+  body += String(pendingFullMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Usable range</dt>
+          <dd>)HTML";
+
+  body += String(pendingCalibrationUsableRangeMm());
+
+  body += R"HTML( mm</dd>
+          <dt>Empty measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingEmptySpanMm);
+
+  body += R"HTML( mm</dd>
+          <dt>Full measurement span</dt>
+          <dd>)HTML";
+
+  body += String(pendingFullSpanMm);
+
+  body += R"HTML( mm</dd>
+        </dl>
+
+        <p class="fw-note">
+          The validated calibration remains temporary in RAM only.
         </p>
 
         <p class="fw-note">
@@ -1411,10 +1743,63 @@ void handleCalibrationRecordFull() {
   pendingFullSpanMm = spanMm;
   pendingFullValid = true;
 
-  const String body =
-      calibrationFullRecordedPageHtml(currentStatus());
+  const CalibrationGeometryResult geometryResult =
+      validatePendingCalibrationGeometry();
+
+  if (geometryResult == CalibrationGeometryResult::MissingReference) {
+    clearPendingCalibration();
+
+    const String body = calibrationIntroPageHtml(currentStatus());
+    sendNoStore();
+    setupServer->send(409, "text/html", body);
+    return;
+  }
+
+  if (geometryResult != CalibrationGeometryResult::Valid) {
+    const String body =
+        calibrationRejectedPageHtml(currentStatus(), geometryResult);
+    sendNoStore();
+    setupServer->send(409, "text/html", body);
+    return;
+  }
+
+  const String body = calibrationReviewPageHtml(currentStatus());
   sendNoStore();
   setupServer->send(200, "text/html", body);
+}
+
+void handleCalibrationSave() {
+  noteFormSubmitted();
+
+  if (!calibrationAccessAllowed()) {
+    sendCalibrationLocked();
+    return;
+  }
+
+  const CalibrationGeometryResult geometryResult =
+      validatePendingCalibrationGeometry();
+
+  if (geometryResult == CalibrationGeometryResult::MissingReference) {
+    clearPendingCalibration();
+
+    const String body = calibrationIntroPageHtml(currentStatus());
+    sendNoStore();
+    setupServer->send(409, "text/html", body);
+    return;
+  }
+
+  if (geometryResult != CalibrationGeometryResult::Valid) {
+    const String body =
+        calibrationRejectedPageHtml(currentStatus(), geometryResult);
+    sendNoStore();
+    setupServer->send(409, "text/html", body);
+    return;
+  }
+
+  const String body =
+      calibrationSaveNotImplementedPageHtml(currentStatus());
+  sendNoStore();
+  setupServer->send(501, "text/html", body);
 }
 
 void handleSetupRoot() {
@@ -1753,7 +2138,7 @@ void registerRoutes(
       "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
   server.on(
       "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
-    server.on("/calibration", HTTP_POST, handleCalibrationIntro);
+  server.on("/calibration", HTTP_POST, handleCalibrationIntro);
   server.on(
       "/calibration/start",
       HTTP_POST,
@@ -1770,6 +2155,10 @@ void registerRoutes(
       "/calibration/record-full",
       HTTP_POST,
       handleCalibrationRecordFull);
+  server.on(
+      "/calibration/save",
+      HTTP_POST,
+      handleCalibrationSave);
   server.on(
       "/calibration/restart",
       HTTP_POST,
