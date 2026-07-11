@@ -15,10 +15,11 @@
 namespace FWWiFiStatus {
 
 /*
- * Initialize WiFi into the safest baseline state for component validation:
- * no persistence writes and radio OFF.
+ * Initialize FarmWhisper WiFi setup state and start the setup AP.
+ *
+ * The setup AP timeout begins at startup. WiFi persistence remains disabled.
  */
-void begin();
+void begin(Stream &out);
 
 /*
  * Print current WiFi mode/status without changing radio state.
@@ -49,10 +50,10 @@ void scanOnce(Stream &out);
 void startApSetup(Stream &out);
 
 /*
- * Refresh the active setup AP timeout after useful setup progress.
+ * Refresh the active setup AP timeout.
  *
- * Future credential/config save handlers should call this only after a
- * successful save. Failed saves should not extend the setup session.
+ * This remains available to direct non-web callers. Setup web form submissions
+ * report activity through the setup web callback.
  */
 void refreshApSetupTimeout(Stream &out);
 

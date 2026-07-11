@@ -161,6 +161,14 @@ FWWiFiSetupWeb::SetupStatus currentSetupWebStatus() {
   };
 }
 
+void noteSetupFormSubmitted() {
+  if (!apSmokeActive) {
+    return;
+  }
+
+  apSmokeStartedMs = millis();
+}
+
 void startSetupHttpServer(Stream &out) {
   if (setupHttpActive) {
     return;
@@ -172,7 +180,10 @@ void startSetupHttpServer(Stream &out) {
    * network-credential forms, general config writes, or boot-time WiFi behavior.
    */
   if (!setupHttpRoutesConfigured) {
-    FWWiFiSetupWeb::registerRoutes(setupServer, currentSetupWebStatus);
+    FWWiFiSetupWeb::registerRoutes(
+        setupServer,
+        currentSetupWebStatus,
+        noteSetupFormSubmitted);
     setupHttpRoutesConfigured = true;
   }
 
@@ -240,7 +251,7 @@ void printApStatus(Stream &out) {
 
 namespace FWWiFiStatus {
 
-void begin() {
+void begin(Stream &out) {
   /*
    * Disable persistence before touching mode so diagnostics do not write
    * network state or credentials to flash.
@@ -248,6 +259,7 @@ void begin() {
   buildDeviceIdentity();
   WiFi.persistent(false);
   forceWifiOff();
+  startApSetup(out);
 }
 
 void printStatus(Stream &out) {

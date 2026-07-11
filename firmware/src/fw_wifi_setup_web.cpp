@@ -117,6 +117,7 @@ void appendTransportModeOptions(String &out) {
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
+FWWiFiSetupWeb::FormSubmittedCallback formSubmittedCallback = nullptr;
 constexpr uint8_t kSetupPinDigits = 6;
 constexpr const char *kSetupPrefsNamespace = "fw_setup";
 constexpr const char *kSetupPinKey = "pin";
@@ -422,6 +423,12 @@ constexpr const char *kSetupCss = R"CSS(
   grid-column: 1 / -1;
 }
 )CSS";
+void noteFormSubmitted() {
+  if (formSubmittedCallback != nullptr) {
+    formSubmittedCallback();
+  }
+}
+
 
 FWWiFiSetupWeb::SetupStatus currentStatus() {
   if (provideStatus != nullptr) {
@@ -719,6 +726,7 @@ void handleSetupRoot() {
 }
 
 void handleSetupUnlock() {
+  noteFormSubmitted();
   if (!setupPinConfigured) {
     redirectToRoot();
     return;
@@ -737,6 +745,7 @@ void handleSetupUnlock() {
 }
 
 void handleSetupAliasChange() {
+  noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(
@@ -771,6 +780,7 @@ void handleSetupAliasChange() {
 }
 
 void handleSetupTransportModeChange() {
+  noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(
@@ -817,6 +827,7 @@ void handleSetupTransportModeChange() {
 }
 
 void handleSetupRadioProfileChange() {
+  noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(
@@ -845,6 +856,7 @@ void handleSetupRadioProfileChange() {
 }
 
 void handleSetupDiagnosticFlood() {
+  noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(
@@ -877,6 +889,7 @@ void handleSetupDiagnosticFlood() {
 }
 
 void handleSetupPinChange() {
+  noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
     sendNoStore();
     setupServer->send(
@@ -1008,9 +1021,13 @@ void handleSetupNotFound() {
 
 namespace FWWiFiSetupWeb {
 
-void registerRoutes(WebServer &server, StatusProvider statusProvider) {
+void registerRoutes(
+    WebServer &server,
+    StatusProvider statusProvider,
+    FormSubmittedCallback submittedCallback) {
   setupServer = &server;
   provideStatus = statusProvider;
+  formSubmittedCallback = submittedCallback;
   loadSetupPinFromNvs();
 
   server.on("/", HTTP_GET, handleSetupRoot);

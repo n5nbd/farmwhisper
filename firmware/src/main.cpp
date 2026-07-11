@@ -22,7 +22,7 @@ void setup() {
 
   FWSerialDiag::printBootBanner();
 
-  FWWiFiStatus::begin();
+  FWWiFiStatus::begin(Serial);
   FWBLE::begin(Serial);
   FWStatusPixel::begin();
   FWButton::begin();
