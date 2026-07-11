@@ -9,18 +9,25 @@
 namespace {
 
 constexpr FwRadioHardware kHeltecV4RadioHardware = {
-    8,   // NSS
-    9,   // SCK
-    10,  // MOSI
-    11,  // MISO
-    12,  // RESET
-    13,  // BUSY
-    14,  // DIO1
+    8,  // NSS
+    9,  // SCK
+    10, // MOSI
+    11, // MISO
+    12, // RESET
+    13, // BUSY
+    14, // DIO1
 };
 
 constexpr float kTcxoVoltage = 1.8f;
-constexpr uint8_t kPrivateSyncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE;
+constexpr uint8_t kPrivateSyncWord =
+    RADIOLIB_SX126X_SYNC_WORD_PRIVATE;
 constexpr int8_t kRadioLibSx1262MaxPowerDbm = 22;
+
+constexpr uint32_t kDiagnosticBurstDurationMs =
+    3UL * 60UL * 1000UL;
+constexpr uint32_t kDiagnosticBurstIntervalMs = 5UL * 1000UL;
+constexpr uint32_t kDiagnosticBurstExpectedPackets =
+    kDiagnosticBurstDurationMs / kDiagnosticBurstIntervalMs;
 
 Module radioModule(
     kHeltecV4RadioHardware.nssPin,
@@ -34,8 +41,16 @@ FwRadioState radioState = FwRadioState::Disabled;
 int16_t radioResult = RADIOLIB_ERR_NONE;
 uint32_t radioTxCount = 0;
 int16_t radioLastTxResult = RADIOLIB_ERR_NONE;
+
 bool appliedProfileValid = false;
 FwRadioProfileId appliedProfileId = FwRadioProfileId::UsDefault;
+
+bool diagnosticBurstRunning = false;
+uint32_t diagnosticBurstStartedAtMs = 0;
+uint32_t diagnosticBurstNextTxAtMs = 0;
+uint32_t diagnosticBurstAttemptCount = 0;
+uint32_t diagnosticBurstPassCount = 0;
+uint32_t diagnosticBurstFailureCount = 0;
 
 int8_t appliedPowerDbm(const FwRadioProfile &profile) {
   return profile.txPowerDbm > kRadioLibSx1262MaxPowerDbm
@@ -43,7 +58,46 @@ int8_t appliedPowerDbm(const FwRadioProfile &profile) {
       : profile.txPowerDbm;
 }
 
-}  // namespace
+uint32_t diagnosticBurstElapsedMs(uint32_t now) {
+  if (!diagnosticBurstRunning) {
+    return 0;
+  }
+
+  return now - diagnosticBurstStartedAtMs;
+}
+
+void printDiagnosticBurstSummary(
+    Stream &out,
+    const char *stateText,
+    const char *reason,
+    uint32_t now) {
+  out.print("[radio] diagnostic burst ");
+  out.print(stateText);
+  out.print(" elapsedMs=");
+  out.print(diagnosticBurstElapsedMs(now));
+  out.print(" attempts=");
+  out.print(diagnosticBurstAttemptCount);
+  out.print(" pass=");
+  out.print(diagnosticBurstPassCount);
+  out.print(" fail=");
+  out.print(diagnosticBurstFailureCount);
+
+  if (reason != nullptr && reason[0] != '\0') {
+    out.print(" reason=\"");
+    out.print(reason);
+    out.print("\"");
+  }
+
+  out.println();
+}
+
+void clearDiagnosticBurstState() {
+  diagnosticBurstRunning = false;
+  diagnosticBurstStartedAtMs = 0;
+  diagnosticBurstNextTxAtMs = 0;
+}
+
+} // namespace
 
 namespace FWRadio {
 
@@ -54,7 +108,6 @@ const FwRadioHardware &hardware() {
 const FwRadioProfile *selectedProfile() {
   const FwRadioProfile *profile =
       fwRadioProfileById(fwSelectedRadioProfileId());
-
   return profile == nullptr ? fwDefaultRadioProfile() : profile;
 }
 
@@ -104,6 +157,10 @@ int16_t lastTxResult() {
   return radioLastTxResult;
 }
 
+bool diagnosticBurstActive() {
+  return diagnosticBurstRunning;
+}
+
 void printStatus(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
 
@@ -140,12 +197,22 @@ void printStatus(Stream &out) {
   out.print(" txCount=");
   out.print(radioTxCount);
   out.print(" lastTxResult=");
-  out.println(radioLastTxResult);
+  out.print(radioLastTxResult);
+  out.print(" diagnosticBurst=");
+  out.print(diagnosticBurstRunning ? "ACTIVE" : "IDLE");
+
+  if (diagnosticBurstRunning) {
+    out.print(" burstAttempts=");
+    out.print(diagnosticBurstAttemptCount);
+    out.print(" burstElapsedMs=");
+    out.print(diagnosticBurstElapsedMs(millis()));
+  }
+
+  out.println();
 }
 
 bool beginDiagnostic(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
-
   if (profile == nullptr) {
     radioState = FwRadioState::Error;
     radioResult = RADIOLIB_ERR_UNKNOWN;
@@ -200,11 +267,11 @@ bool beginDiagnostic(Stream &out) {
   appliedProfileId = profile->id;
   appliedProfileValid = true;
   radioState = FwRadioState::Ready;
+
   out.println("[radio] SX1262 init PASS; no TX/RX started");
   printStatus(out);
   return true;
 }
-
 
 bool transmitDiagnostic(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
@@ -272,4 +339,79 @@ bool transmitDiagnostic(Stream &out) {
   return radioLastTxResult == RADIOLIB_ERR_NONE;
 }
 
-}  // namespace FWRadio
+bool startDiagnosticBurst(Stream &out) {
+  if (diagnosticBurstRunning) {
+    out.print("[radio] diagnostic burst already active elapsedMs=");
+    out.print(diagnosticBurstElapsedMs(millis()));
+    out.print(" attempts=");
+    out.println(diagnosticBurstAttemptCount);
+    return false;
+  }
+
+  diagnosticBurstRunning = true;
+  diagnosticBurstStartedAtMs = millis();
+  diagnosticBurstNextTxAtMs = diagnosticBurstStartedAtMs;
+  diagnosticBurstAttemptCount = 0;
+  diagnosticBurstPassCount = 0;
+  diagnosticBurstFailureCount = 0;
+
+  out.print("[radio] diagnostic burst started durationMs=");
+  out.print(kDiagnosticBurstDurationMs);
+  out.print(" intervalMs=");
+  out.print(kDiagnosticBurstIntervalMs);
+  out.print(" expectedPackets=");
+  out.println(kDiagnosticBurstExpectedPackets);
+  return true;
+}
+
+void serviceDiagnosticBurst(Stream &out) {
+  if (!diagnosticBurstRunning) {
+    return;
+  }
+
+  const uint32_t now = millis();
+  if (diagnosticBurstElapsedMs(now) >= kDiagnosticBurstDurationMs) {
+    printDiagnosticBurstSummary(out, "complete", nullptr, now);
+    clearDiagnosticBurstState();
+    return;
+  }
+
+  if (static_cast<int32_t>(now - diagnosticBurstNextTxAtMs) < 0) {
+    return;
+  }
+
+  diagnosticBurstAttemptCount++;
+
+  out.print("[radio] diagnostic burst ping ");
+  out.print(diagnosticBurstAttemptCount);
+  out.print("/");
+  out.println(kDiagnosticBurstExpectedPackets);
+
+  if (transmitDiagnostic(out)) {
+    diagnosticBurstPassCount++;
+  } else {
+    diagnosticBurstFailureCount++;
+  }
+
+  uint32_t nextTxAtMs =
+      diagnosticBurstNextTxAtMs + kDiagnosticBurstIntervalMs;
+  const uint32_t afterTxMs = millis();
+
+  if (static_cast<int32_t>(afterTxMs - nextTxAtMs) >= 0) {
+    nextTxAtMs = afterTxMs + kDiagnosticBurstIntervalMs;
+  }
+
+  diagnosticBurstNextTxAtMs = nextTxAtMs;
+}
+
+void cancelDiagnosticBurst(Stream &out, const char *reason) {
+  if (!diagnosticBurstRunning) {
+    return;
+  }
+
+  const uint32_t now = millis();
+  printDiagnosticBurstSummary(out, "cancelled", reason, now);
+  clearDiagnosticBurstState();
+}
+
+} // namespace FWRadio

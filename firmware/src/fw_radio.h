@@ -7,9 +7,9 @@
 
 // FarmWhisper SX1262 integration boundary.
 //
-// The radio remains inactive at boot. The serial diagnostic command explicitly
-// initializes the onboard Heltec V4 SX1262 using the selected firmware-owned
-// profile. This slice does not transmit or start a receive loop.
+// The radio remains inactive at boot. Explicit diagnostics initialize the
+// onboard Heltec V4 SX1262 using the selected firmware-owned profile. The
+// bounded diagnostic burst is serviced without blocking the main loop.
 
 enum class FwRadioState : uint8_t {
   Disabled = 0,
@@ -43,9 +43,14 @@ int16_t lastResult();
 bool beginDiagnostic(Stream &out);
 bool transmitDiagnostic(Stream &out);
 
+bool startDiagnosticBurst(Stream &out);
+void serviceDiagnosticBurst(Stream &out);
+void cancelDiagnosticBurst(Stream &out, const char *reason);
+bool diagnosticBurstActive();
+
 uint32_t txCount();
 int16_t lastTxResult();
 
 void printStatus(Stream &out);
 
-}  // namespace FWRadio
+} // namespace FWRadio

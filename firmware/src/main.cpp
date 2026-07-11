@@ -21,6 +21,7 @@ void setup() {
   delay(300);
 
   FWSerialDiag::printBootBanner();
+
   FWWiFiStatus::begin();
   FWBLE::begin(Serial);
   FWStatusPixel::begin();
@@ -52,19 +53,30 @@ void loop() {
 
   if (FWButton::consumeDoublePressEvent()) {
     const FwTransportModeId transportMode = fwSelectedTransportModeId();
-    if (fwTransportModeUsesLoRa(transportMode)) {
-      FWRadio::transmitDiagnostic(Serial);
-    } else {
-      Serial.print("[transport] LoRa diagnostic skipped: selected mode ");
+
+    if (!fwTransportModeUsesLoRa(transportMode)) {
+      Serial.print(
+          "[transport] LoRa diagnostic burst skipped: selected mode ");
       Serial.print(fwTransportModeName(transportMode));
-      Serial.println(
-          " disables LoRa; Bluetooth LE is discovery-only and has no "
-          "diagnostic data path yet");
+      Serial.println(" disables LoRa");
+    } else if (FWRadio::diagnosticBurstActive()) {
+      FWRadio::cancelDiagnosticBurst(
+          Serial, "button double press");
+    } else {
+      FWRadio::startDiagnosticBurst(Serial);
     }
   }
 
   if (FWButton::consumeTriplePressEvent()) {
     FWWiFiStatus::startApSetup(Serial);
+  }
+
+  const FwTransportModeId transportMode = fwSelectedTransportModeId();
+  if (fwTransportModeUsesLoRa(transportMode)) {
+    FWRadio::serviceDiagnosticBurst(Serial);
+  } else if (FWRadio::diagnosticBurstActive()) {
+    FWRadio::cancelDiagnosticBurst(
+        Serial, "selected transport mode no longer includes LoRa");
   }
 
   FWToF::poll();
