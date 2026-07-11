@@ -11,12 +11,23 @@ constexpr const char* kConfigNamespace = "fwdevcfg";
 constexpr const char* kAliasKey = "alias";
 constexpr const char* kRadioProfileKey = "radioProfile";
 constexpr const char* kTransportModeKey = "transportMode";
+constexpr const char* kCalibrationKey = "calibration";
 constexpr const char* kDefaultDeviceAlias = "FarmWhisper device";
+constexpr uint16_t kCalibrationStorageVersion = 1;
+
+struct StoredCalibration {
+  uint16_t version;
+  uint16_t emptyMm;
+  uint16_t fullMm;
+};
 
 bool configLoaded = false;
 char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
 FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
 FwTransportModeId selectedTransportModeId = FwTransportModeId::LoRa;
+bool calibrationConfigured = false;
+uint16_t calibrationEmptyMm = 0;
+uint16_t calibrationFullMm = 0;
 
 void copyAlias(const char* value) {
   if (value == nullptr || value[0] == '\0') {
@@ -67,6 +78,9 @@ void fwLoadDeviceConfig() {
   copyAlias(kDefaultDeviceAlias);
   useDefaultRadioProfile();
   useDefaultTransportMode();
+  calibrationConfigured = false;
+  calibrationEmptyMm = 0;
+  calibrationFullMm = 0;
 
   if (prefs.begin(kConfigNamespace, true)) {
     const String storedAlias = prefs.getString(kAliasKey, kDefaultDeviceAlias);
@@ -88,6 +102,21 @@ void fwLoadDeviceConfig() {
         fwTransportModeByKey(storedTransportModeKey.c_str());
     if (storedTransportMode != nullptr) {
       selectedTransportModeId = storedTransportMode->id;
+    }
+
+    if (prefs.getBytesLength(kCalibrationKey) ==
+        sizeof(StoredCalibration)) {
+      StoredCalibration storedCalibration = {};
+      if (prefs.getBytes(
+              kCalibrationKey,
+              &storedCalibration,
+              sizeof(storedCalibration)) == sizeof(storedCalibration) &&
+          storedCalibration.version == kCalibrationStorageVersion &&
+          storedCalibration.emptyMm > storedCalibration.fullMm) {
+        calibrationEmptyMm = storedCalibration.emptyMm;
+        calibrationFullMm = storedCalibration.fullMm;
+        calibrationConfigured = true;
+      }
     }
 
     prefs.end();
@@ -215,5 +244,76 @@ void fwClearSelectedTransportMode() {
   }
 
   useDefaultTransportMode();
+  configLoaded = true;
+}
+
+
+bool fwCalibrationConfigured() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return calibrationConfigured;
+}
+
+uint16_t fwCalibrationEmptyMm() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return calibrationConfigured ? calibrationEmptyMm : 0;
+}
+
+uint16_t fwCalibrationFullMm() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return calibrationConfigured ? calibrationFullMm : 0;
+}
+
+bool fwSaveCalibration(uint16_t emptyMm, uint16_t fullMm) {
+  if (emptyMm <= fullMm) {
+    return false;
+  }
+
+  const StoredCalibration storedCalibration = {
+      kCalibrationStorageVersion,
+      emptyMm,
+      fullMm,
+  };
+
+  Preferences prefs;
+  if (!prefs.begin(kConfigNamespace, false)) {
+    return false;
+  }
+
+  const bool ok =
+      prefs.putBytes(
+          kCalibrationKey,
+          &storedCalibration,
+          sizeof(storedCalibration)) == sizeof(storedCalibration);
+  prefs.end();
+
+  if (ok) {
+    calibrationEmptyMm = emptyMm;
+    calibrationFullMm = fullMm;
+    calibrationConfigured = true;
+    configLoaded = true;
+  }
+
+  return ok;
+}
+
+void fwClearCalibration() {
+  Preferences prefs;
+  if (prefs.begin(kConfigNamespace, false)) {
+    prefs.remove(kCalibrationKey);
+    prefs.end();
+  }
+
+  calibrationEmptyMm = 0;
+  calibrationFullMm = 0;
+  calibrationConfigured = false;
   configLoaded = true;
 }

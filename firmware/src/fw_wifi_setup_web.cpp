@@ -1265,7 +1265,8 @@ String calibrationFullPageHtml(
 }
 
 String calibrationReviewPageHtml(
-    const FWWiFiSetupWeb::SetupStatus &status) {
+    const FWWiFiSetupWeb::SetupStatus &status,
+    const char *errorMessage = nullptr) {
   String body;
   body.reserve(4300);
 
@@ -1291,7 +1292,16 @@ String calibrationReviewPageHtml(
         <p class="fw-intro">
           The empty and full references passed the calibration geometry checks.
         </p>
+)HTML";
 
+  if (errorMessage != nullptr) {
+    body += R"HTML(        <p class="fw-error">)HTML";
+    appendHtmlEscapedString(body, errorMessage);
+    body += R"HTML(</p>
+)HTML";
+  }
+
+  body += R"HTML(
         <dl class="fw-status-grid">
           <dt>Empty distance</dt>
           <dd>)HTML";
@@ -1552,17 +1562,17 @@ String calibrationRejectedPageHtml(
   return body;
 }
 
-String calibrationSaveNotImplementedPageHtml(
+String calibrationSavedPageHtml(
     const FWWiFiSetupWeb::SetupStatus &status) {
   String body;
-  body.reserve(4100);
+  body.reserve(3900);
 
   body += R"HTML(<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FarmWhisper Calibration Save</title>
+  <title>FarmWhisper Calibration Saved</title>
   <link rel="stylesheet" href="/setup.css">
 </head>
 <body class="fw-page">
@@ -1570,52 +1580,38 @@ String calibrationSaveNotImplementedPageHtml(
     <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
     <div class="fw-content">
       <section class="fw-section"
-               aria-labelledby="fw-calibration-save-title">
+               aria-labelledby="fw-calibration-saved-title">
         <h2 class="fw-section-title"
-            id="fw-calibration-save-title">
-          Saving not implemented yet
+            id="fw-calibration-saved-title">
+          Calibration saved
         </h2>
 
-        <p class="fw-error">
-          No calibration values were written to device storage.
+        <p class="fw-intro">
+          The validated calibration was written to device storage and will
+          remain active after restart.
         </p>
 
         <dl class="fw-status-grid">
           <dt>Empty distance</dt>
           <dd>)HTML";
 
-  body += String(pendingEmptyMm);
+  body += String(fwCalibrationEmptyMm());
 
   body += R"HTML( mm</dd>
           <dt>Full distance</dt>
           <dd>)HTML";
 
-  body += String(pendingFullMm);
+  body += String(fwCalibrationFullMm());
 
   body += R"HTML( mm</dd>
           <dt>Usable range</dt>
           <dd>)HTML";
 
-  body += String(pendingCalibrationUsableRangeMm());
-
-  body += R"HTML( mm</dd>
-          <dt>Empty measurement span</dt>
-          <dd>)HTML";
-
-  body += String(pendingEmptySpanMm);
-
-  body += R"HTML( mm</dd>
-          <dt>Full measurement span</dt>
-          <dd>)HTML";
-
-  body += String(pendingFullSpanMm);
+  body += String(
+      fwCalibrationEmptyMm() - fwCalibrationFullMm());
 
   body += R"HTML( mm</dd>
         </dl>
-
-        <p class="fw-note">
-          The validated calibration remains temporary in RAM only.
-        </p>
 
         <p class="fw-note">
           Setup session remaining:
@@ -1625,18 +1621,6 @@ String calibrationSaveNotImplementedPageHtml(
 
   body += R"HTML( seconds</strong>
         </p>
-
-        <form class="fw-form" method="post"
-              action="/calibration/full">
-          <button class="fw-button" type="submit">
-            Record full again
-          </button>
-        </form>
-
-        <form class="fw-form" method="post"
-              action="/calibration/restart">
-          <button class="fw-button" type="submit">Start over</button>
-        </form>
 
         <p class="fw-actions">
           <a class="fw-link" href="/">Return to setup</a>
@@ -1796,10 +1780,21 @@ void handleCalibrationSave() {
     return;
   }
 
-  const String body =
-      calibrationSaveNotImplementedPageHtml(currentStatus());
+  if (!fwSaveCalibration(pendingEmptyMm, pendingFullMm)) {
+    const String body = calibrationReviewPageHtml(
+        currentStatus(),
+        "Calibration could not be written to device storage. "
+        "The pending measurements are still available.");
+    sendNoStore();
+    setupServer->send(500, "text/html", body);
+    return;
+  }
+
+  clearPendingCalibration();
+
+  const String body = calibrationSavedPageHtml(currentStatus());
   sendNoStore();
-  setupServer->send(501, "text/html", body);
+  setupServer->send(200, "text/html", body);
 }
 
 void handleSetupRoot() {
@@ -2044,7 +2039,7 @@ void handleSetupStatus() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  body.reserve(850);
+  body.reserve(1024);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
@@ -2066,6 +2061,13 @@ void handleSetupStatus() {
   body += ",\n  \"deviceAlias\": \"";
   appendJsonEscapedString(body, fwDeviceAlias());
   body += "\"";
+
+  body += ",\n  \"calibrationConfigured\": ";
+  body += fwCalibrationConfigured() ? "true" : "false";
+  body += ",\n  \"calibrationEmptyMm\": ";
+  body += String(fwCalibrationEmptyMm());
+  body += ",\n  \"calibrationFullMm\": ";
+  body += String(fwCalibrationFullMm());
 
   const FwRadioProfileId selectedRadioProfileId =
       fwSelectedRadioProfileId();

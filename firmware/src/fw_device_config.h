@@ -26,3 +26,9 @@ void fwClearSelectedRadioProfile();
 FwTransportModeId fwSelectedTransportModeId();
 bool fwSetSelectedTransportModeByKey(const char* key);
 void fwClearSelectedTransportMode();
+
+bool fwCalibrationConfigured();
+uint16_t fwCalibrationEmptyMm();
+uint16_t fwCalibrationFullMm();
+bool fwSaveCalibration(uint16_t emptyMm, uint16_t fullMm);
+void fwClearCalibration();
