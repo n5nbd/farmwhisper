@@ -15,7 +15,6 @@ struct FwRadioProfile {
 
   // Internal radio parameters. These are firmware-owned and should not be
   // presented to users as editable raw LoRa knobs.
-  uint32_t frequencyHz;
   int8_t txPowerDbm;
   uint32_t bandwidthHz;
   uint8_t spreadingFactor;

@@ -44,6 +44,8 @@ int16_t radioLastTxResult = RADIOLIB_ERR_NONE;
 
 bool appliedProfileValid = false;
 FwRadioProfileId appliedProfileId = FwRadioProfileId::UsDefault;
+bool appliedChannelValid = false;
+uint8_t appliedChannelNumber = 9;
 
 bool diagnosticBurstRunning = false;
 uint32_t diagnosticBurstStartedAtMs = 0;
@@ -119,6 +121,20 @@ const FwRadioProfile *appliedProfile() {
   return fwRadioProfileById(appliedProfileId);
 }
 
+const FwRadioChannel *selectedChannel() {
+  const FwRadioChannel *channel =
+      fwRadioChannelByNumber(fwSelectedRadioChannelNumber());
+  return channel == nullptr ? fwDefaultRadioChannel() : channel;
+}
+
+const FwRadioChannel *appliedChannel() {
+  if (!appliedChannelValid) {
+    return nullptr;
+  }
+
+  return fwRadioChannelByNumber(appliedChannelNumber);
+}
+
 const char *selectedProfileKey() {
   const FwRadioProfile *profile = selectedProfile();
   return profile == nullptr ? "none" : profile->key;
@@ -127,6 +143,16 @@ const char *selectedProfileKey() {
 const char *appliedProfileKey() {
   const FwRadioProfile *profile = appliedProfile();
   return profile == nullptr ? "none" : profile->key;
+}
+
+const char *selectedChannelKey() {
+  const FwRadioChannel *channel = selectedChannel();
+  return channel == nullptr ? "none" : channel->key;
+}
+
+const char *appliedChannelKey() {
+  const FwRadioChannel *channel = appliedChannel();
+  return channel == nullptr ? "none" : channel->key;
 }
 
 FwRadioState state() {
@@ -163,6 +189,7 @@ bool diagnosticBurstActive() {
 
 void printStatus(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
+  const FwRadioChannel *channel = selectedChannel();
 
   out.print("[radio] state=");
   out.print(stateName());
@@ -172,16 +199,22 @@ void printStatus(Stream &out) {
   out.print(selectedProfileKey());
   out.print(" appliedProfile=");
   out.print(appliedProfileKey());
+  out.print(" selectedChannel=");
+  out.print(selectedChannelKey());
+  out.print(" appliedChannel=");
+  out.print(appliedChannelKey());
 
-  if (profile == nullptr) {
+  if (profile == nullptr || channel == nullptr) {
     out.println();
     return;
   }
 
   out.print(" name=\"");
   out.print(profile->name);
+  out.print("\" channelName=\"");
+  out.print(channel->name);
   out.print("\" freqHz=");
-  out.print(profile->frequencyHz);
+  out.print(channel->frequencyHz);
   out.print(" bwHz=");
   out.print(profile->bandwidthHz);
   out.print(" sf=");
@@ -213,10 +246,12 @@ void printStatus(Stream &out) {
 
 bool beginDiagnostic(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
-  if (profile == nullptr) {
+  const FwRadioChannel *channel = selectedChannel();
+  if (profile == nullptr || channel == nullptr) {
     radioState = FwRadioState::Error;
     radioResult = RADIOLIB_ERR_UNKNOWN;
-    out.println("[radio] init failed: no selected/default profile");
+    out.println(
+        "[radio] init failed: no selected/default profile or channel");
     return false;
   }
 
@@ -230,7 +265,7 @@ bool beginDiagnostic(Stream &out) {
       kHeltecV4RadioHardware.nssPin);
 
   const float frequencyMhz =
-      static_cast<float>(profile->frequencyHz) / 1000000.0f;
+      static_cast<float>(channel->frequencyHz) / 1000000.0f;
   const float bandwidthKhz =
       static_cast<float>(profile->bandwidthHz) / 1000.0f;
 
@@ -248,6 +283,7 @@ bool beginDiagnostic(Stream &out) {
   if (radioResult != RADIOLIB_ERR_NONE) {
     radioState = FwRadioState::Error;
     appliedProfileValid = false;
+    appliedChannelValid = false;
     out.print("[radio] SX1262 init failed code=");
     out.println(radioResult);
     printStatus(out);
@@ -258,6 +294,7 @@ bool beginDiagnostic(Stream &out) {
   if (radioResult != RADIOLIB_ERR_NONE) {
     radioState = FwRadioState::Error;
     appliedProfileValid = false;
+    appliedChannelValid = false;
     out.print("[radio] DIO2 RF switch setup failed code=");
     out.println(radioResult);
     printStatus(out);
@@ -266,6 +303,8 @@ bool beginDiagnostic(Stream &out) {
 
   appliedProfileId = profile->id;
   appliedProfileValid = true;
+  appliedChannelNumber = channel->number;
+  appliedChannelValid = true;
   radioState = FwRadioState::Ready;
 
   out.println("[radio] SX1262 init PASS; no TX/RX started");
@@ -275,22 +314,33 @@ bool beginDiagnostic(Stream &out) {
 
 bool transmitDiagnostic(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
-  if (profile == nullptr) {
+  const FwRadioChannel *channel = selectedChannel();
+  if (profile == nullptr || channel == nullptr) {
     radioLastTxResult = RADIOLIB_ERR_UNKNOWN;
-    out.println("[radio] TX failed: no selected/default profile");
+    out.println(
+        "[radio] TX failed: no selected/default profile or channel");
     return false;
   }
 
   const FwRadioProfile *activeProfile = appliedProfile();
+  const FwRadioChannel *activeChannel = appliedChannel();
   const bool profileChanged =
       activeProfile == nullptr || activeProfile->id != profile->id;
+  const bool channelChanged =
+      activeChannel == nullptr || activeChannel->number != channel->number;
+  const bool configurationChanged = profileChanged || channelChanged;
 
-  if (radioState != FwRadioState::Ready || profileChanged) {
-    if (profileChanged && radioState == FwRadioState::Ready) {
-      out.print("[radio] selected profile changed: applied=");
+  if (radioState != FwRadioState::Ready || configurationChanged) {
+    if (configurationChanged && radioState == FwRadioState::Ready) {
+      out.print("[radio] selected radio configuration changed: ");
+      out.print("appliedProfile=");
       out.print(appliedProfileKey());
-      out.print(" selected=");
-      out.println(profile->key);
+      out.print(" selectedProfile=");
+      out.print(profile->key);
+      out.print(" appliedChannel=");
+      out.print(appliedChannelKey());
+      out.print(" selectedChannel=");
+      out.println(channel->key);
     } else {
       out.println("[radio] radio not ready; initializing first");
     }
@@ -306,8 +356,9 @@ bool transmitDiagnostic(Stream &out) {
   snprintf(
       packet,
       sizeof(packet),
-      "FWP TEST profile=%s count=%lu",
+      "FWP TEST profile=%s channel=%s count=%lu",
       profile->key,
+      channel->key,
       static_cast<unsigned long>(nextCount));
 
   out.print("[radio] TX \"");

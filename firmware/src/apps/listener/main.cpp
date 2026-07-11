@@ -2,6 +2,7 @@
 #include <RadioLib.h>
 #include <SPI.h>
 
+#include "fw_radio_channel.h"
 #include "fw_radio_profile.h"
 
 namespace {
@@ -25,6 +26,7 @@ constexpr int8_t kRadioLibSx1262MaxPowerDbm = 22;
 
 constexpr FwRadioProfileId kListenerProfileId =
     FwRadioProfileId::UsLongRange;
+constexpr uint8_t kListenerChannelNumber = 9;
 
 Module radioModule(
     kRadioNssPin,
@@ -51,6 +53,12 @@ const FwRadioProfile *listenerProfile() {
   return profile == nullptr ? fwDefaultRadioProfile() : profile;
 }
 
+const FwRadioChannel *listenerChannel() {
+  const FwRadioChannel *channel =
+      fwRadioChannelByNumber(kListenerChannelNumber);
+  return channel == nullptr ? fwDefaultRadioChannel() : channel;
+}
+
 int8_t appliedPowerDbm(const FwRadioProfile &profile) {
   return profile.txPowerDbm > kRadioLibSx1262MaxPowerDbm
       ? kRadioLibSx1262MaxPowerDbm
@@ -63,13 +71,17 @@ void pulsePacketLed() {
   digitalWrite(kPacketLedPin, LOW);
 }
 
-void printProfile(const FwRadioProfile &profile) {
+void printProfile(
+    const FwRadioProfile &profile,
+    const FwRadioChannel &channel) {
   Serial.print("[listener] profile=");
   Serial.print(profile.key);
   Serial.print(" name=\"");
   Serial.print(profile.name);
-  Serial.print("\" freqHz=");
-  Serial.print(profile.frequencyHz);
+  Serial.print("\" channel=");
+  Serial.print(channel.key);
+  Serial.print(" freqHz=");
+  Serial.print(channel.frequencyHz);
   Serial.print(" bwHz=");
   Serial.print(profile.bandwidthHz);
   Serial.print(" sf=");
@@ -82,12 +94,13 @@ void printProfile(const FwRadioProfile &profile) {
 
 bool beginRadio() {
   const FwRadioProfile *profile = listenerProfile();
-  if (profile == nullptr) {
-    Serial.println("[listener] ERROR no radio profile");
+  const FwRadioChannel *channel = listenerChannel();
+  if (profile == nullptr || channel == nullptr) {
+    Serial.println("[listener] ERROR no radio profile or channel");
     return false;
   }
 
-  printProfile(*profile);
+  printProfile(*profile, *channel);
 
   SPI.begin(
       kRadioSckPin,
@@ -96,7 +109,7 @@ bool beginRadio() {
       kRadioNssPin);
 
   const float frequencyMhz =
-      static_cast<float>(profile->frequencyHz) / 1000000.0f;
+      static_cast<float>(channel->frequencyHz) / 1000000.0f;
   const float bandwidthKhz =
       static_cast<float>(profile->bandwidthHz) / 1000.0f;
 
@@ -201,7 +214,10 @@ void printHeartbeatIfDue() {
   Serial.print(" errors=");
   Serial.print(receiveErrorCount);
   Serial.print(" profile=");
-  Serial.println(profile == nullptr ? "none" : profile->key);
+  Serial.print(profile == nullptr ? "none" : profile->key);
+  Serial.print(" channel=");
+  const FwRadioChannel *channel = listenerChannel();
+  Serial.println(channel == nullptr ? "none" : channel->key);
 }
 
 }  // namespace

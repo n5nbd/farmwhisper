@@ -2,6 +2,7 @@
 
 #include "fw_device_config.h"
 #include "fw_radio.h"
+#include "fw_radio_channel.h"
 #include "fw_radio_profile.h"
 #include "fw_transport_mode.h"
 
@@ -90,6 +91,27 @@ void appendRadioProfileOptions(String &out) {
     }
     out += ">";
     appendHtmlEscapedString(out, profile->name);
+    out += "</option>";
+  }
+}
+
+void appendRadioChannelOptions(String &out) {
+  const uint8_t selectedNumber = fwSelectedRadioChannelNumber();
+
+  for (size_t i = 0; i < fwRadioChannelCount(); ++i) {
+    const FwRadioChannel *channel = fwRadioChannelAt(i);
+    if (channel == nullptr) {
+      continue;
+    }
+
+    out += R"HTML(<option value=")HTML";
+    appendHtmlEscapedString(out, channel->key);
+    out += "\"";
+    if (channel->number == selectedNumber) {
+      out += " selected";
+    }
+    out += ">";
+    appendHtmlEscapedString(out, channel->name);
     out += "</option>";
   }
 }
@@ -709,6 +731,19 @@ String setupRootPageHtml(
             </div>
             <button class="fw-button fw-config-action" type="submit">Update</button>
             <div class="fw-config-note">Radio settings are managed by firmware profiles.</div>
+          </form>
+
+          <form class="fw-config-row" method="post" action="/radio-channel">
+            <label class="fw-config-label" for="fw-radio-channel">Radio channel</label>
+            <div class="fw-config-control">
+              <select class="fw-select" id="fw-radio-channel" name="channel">
+)HTML";
+  appendRadioChannelOptions(body);
+  body += R"HTML(
+              </select>
+            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">All FarmWhisper units that communicate directly must use the same channel.</div>
           </form>
 
           <form class="fw-config-row" method="post" action="/diagnostic-flood">
@@ -2013,6 +2048,35 @@ void handleSetupRadioProfileChange() {
   redirectToRoot();
 }
 
+void handleSetupRadioChannelChange() {
+  noteFormSubmitted();
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  String channelKey = setupServer->arg("channel");
+  channelKey.trim();
+
+  if (!fwSetSelectedRadioChannelByKey(channelKey.c_str())) {
+    sendNoStore();
+    setupServer->send(
+        400,
+        "text/plain",
+        "Unknown FarmWhisper radio channel.");
+    return;
+  }
+
+  const uint8_t selectedNumber = fwSelectedRadioChannelNumber();
+  setSetupNotice(
+      String("Radio channel set to ") +
+      fwRadioChannelName(selectedNumber) +
+      ". This setting remains active until changed.");
+  redirectToRoot();
+}
+
 void handleSetupDiagnosticFlood() {
   noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
@@ -2105,7 +2169,7 @@ void handleSetupStatus() {
   const FWWiFiSetupWeb::SetupStatus status = currentStatus();
 
   String body;
-  body.reserve(1024);
+  body.reserve(1280);
   body += "{\n";
   body += "  \"apSmoke\": ";
   body += status.apSmokeActive ? "true" : "false";
@@ -2145,6 +2209,22 @@ void handleSetupStatus() {
   appendJsonEscapedString(
       body, fwRadioProfileName(selectedRadioProfileId));
   body += "\"";
+
+  const uint8_t selectedRadioChannelNumber =
+      fwSelectedRadioChannelNumber();
+  body += ",\n  \"radioChannelKey\": \"";
+  appendJsonEscapedString(
+      body, fwRadioChannelKey(selectedRadioChannelNumber));
+  body += "\"";
+  body += ",\n  \"radioChannelNumber\": ";
+  body += String(static_cast<unsigned int>(selectedRadioChannelNumber));
+  body += ",\n  \"radioChannelName\": \"";
+  appendJsonEscapedString(
+      body, fwRadioChannelName(selectedRadioChannelNumber));
+  body += "\"";
+  body += ",\n  \"radioChannelFrequencyHz\": ";
+  body += String(
+      fwRadioChannelFrequencyHz(selectedRadioChannelNumber));
 
   const FwTransportModeId selectedTransportModeId =
       fwSelectedTransportModeId();
@@ -2205,6 +2285,8 @@ void registerRoutes(
       "/transport-mode", HTTP_POST, handleSetupTransportModeChange);
   server.on(
       "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
+  server.on(
+      "/radio-channel", HTTP_POST, handleSetupRadioChannelChange);
   server.on(
       "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
   server.on("/calibration", HTTP_POST, handleCalibrationIntro);

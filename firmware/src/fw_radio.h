@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <stdint.h>
 
+#include "fw_radio_channel.h"
 #include "fw_radio_profile.h"
 
 // FarmWhisper SX1262 integration boundary.
@@ -32,9 +33,13 @@ namespace FWRadio {
 const FwRadioHardware &hardware();
 const FwRadioProfile *selectedProfile();
 const FwRadioProfile *appliedProfile();
+const FwRadioChannel *selectedChannel();
+const FwRadioChannel *appliedChannel();
 
 const char *selectedProfileKey();
 const char *appliedProfileKey();
+const char *selectedChannelKey();
+const char *appliedChannelKey();
 
 FwRadioState state();
 const char *stateName();

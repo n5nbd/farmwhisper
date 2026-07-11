@@ -10,6 +10,7 @@ namespace {
 constexpr const char* kConfigNamespace = "fwdevcfg";
 constexpr const char* kAliasKey = "alias";
 constexpr const char* kRadioProfileKey = "radioProfile";
+constexpr const char* kRadioChannelKey = "radioChannel";
 constexpr const char* kTransportModeKey = "transportMode";
 constexpr const char* kCalibrationKey = "calibration";
 constexpr const char* kDefaultDeviceAlias = "FarmWhisper device";
@@ -24,6 +25,7 @@ struct StoredCalibration {
 bool configLoaded = false;
 char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
 FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
+uint8_t selectedRadioChannelNumber = 9;
 FwTransportModeId selectedTransportModeId = FwTransportModeId::LoRa;
 bool calibrationConfigured = false;
 uint16_t calibrationEmptyMm = 0;
@@ -64,6 +66,11 @@ void useDefaultRadioProfile() {
       profile == nullptr ? FwRadioProfileId::UsDefault : profile->id;
 }
 
+void useDefaultRadioChannel() {
+  const FwRadioChannel* channel = fwDefaultRadioChannel();
+  selectedRadioChannelNumber = channel == nullptr ? 9 : channel->number;
+}
+
 void useDefaultTransportMode() {
   const FwTransportMode* mode = fwDefaultTransportMode();
   selectedTransportModeId =
@@ -77,6 +84,7 @@ void fwLoadDeviceConfig() {
 
   copyAlias(kDefaultDeviceAlias);
   useDefaultRadioProfile();
+  useDefaultRadioChannel();
   useDefaultTransportMode();
   calibrationConfigured = false;
   calibrationEmptyMm = 0;
@@ -94,6 +102,14 @@ void fwLoadDeviceConfig() {
         fwRadioProfileByKey(storedRadioProfileKey.c_str());
     if (storedRadioProfile != nullptr) {
       selectedRadioProfileId = storedRadioProfile->id;
+    }
+
+    const String storedRadioChannelKey =
+        prefs.getString(kRadioChannelKey, "");
+    const FwRadioChannel* storedRadioChannel =
+        fwRadioChannelByKey(storedRadioChannelKey.c_str());
+    if (storedRadioChannel != nullptr) {
+      selectedRadioChannelNumber = storedRadioChannel->number;
     }
 
     const String storedTransportModeKey =
@@ -203,6 +219,47 @@ void fwClearSelectedRadioProfile() {
   }
 
   useDefaultRadioProfile();
+  configLoaded = true;
+}
+
+uint8_t fwSelectedRadioChannelNumber() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return selectedRadioChannelNumber;
+}
+
+bool fwSetSelectedRadioChannelByKey(const char* key) {
+  const FwRadioChannel* channel = fwRadioChannelByKey(key);
+  if (channel == nullptr) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kConfigNamespace, false)) {
+    return false;
+  }
+
+  const bool ok = prefs.putString(kRadioChannelKey, channel->key) > 0;
+  prefs.end();
+
+  if (ok) {
+    selectedRadioChannelNumber = channel->number;
+    configLoaded = true;
+  }
+
+  return ok;
+}
+
+void fwClearSelectedRadioChannel() {
+  Preferences prefs;
+  if (prefs.begin(kConfigNamespace, false)) {
+    prefs.remove(kRadioChannelKey);
+    prefs.end();
+  }
+
+  useDefaultRadioChannel();
   configLoaded = true;
 }
 
