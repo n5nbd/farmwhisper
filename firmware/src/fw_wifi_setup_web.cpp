@@ -637,10 +637,11 @@ String setupRootPageHtml(
             <button class="fw-button fw-config-action" type="submit">Start</button>
           </form>
 
-          <div class="fw-config-row">
+          <form class="fw-config-row" method="post" action="/calibration">
             <div class="fw-config-label">Sensor calibration</div>
-            <div class="fw-config-note">Not implemented yet.</div>
-          </div>
+            <div class="fw-config-control">Set empty and full reference levels</div>
+            <button class="fw-button fw-config-action" type="submit">Calibrate</button>
+          </form>
         </div>
         <p class="fw-actions">
           <a class="fw-link" href="/status">View setup status JSON</a>
@@ -654,6 +655,123 @@ String setupRootPageHtml(
 )HTML";
 
   return body;
+}
+
+String calibrationIntroPageHtml(
+    const FWWiFiSetupWeb::SetupStatus &status) {
+  String body;
+  body.reserve(3000);
+
+  body += R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FarmWhisper Sensor Calibration</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body class="fw-page">
+  <main class="fw-window">
+    <h1 class="fw-titlebar">FarmWhisper Sensor Calibration</h1>
+    <div class="fw-content">
+      <section class="fw-section" aria-labelledby="fw-calibration-title">
+        <h2 class="fw-section-title" id="fw-calibration-title">Before you begin</h2>
+
+        <p class="fw-intro">
+          Calibration records an empty reference and a full reference for this
+          container.
+        </p>
+
+        <p class="fw-note">
+          Keep the sensor installed in its normal operating position throughout
+          calibration.
+        </p>
+
+        <p class="fw-note">
+          The status light must be green before recording each measurement.
+        </p>
+
+        <p class="fw-note">
+          <strong>You have up to 5 minutes to complete each step.</strong>
+          Every calibration action restarts the setup timer. If the setup
+          session expires, unfinished calibration is discarded and you must
+          start over.
+        </p>
+
+        <p class="fw-note">
+          Setup session remaining:
+          <strong id="fw-session-countdown">)HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML( seconds</strong>
+        </p>
+
+        <p class="fw-actions">
+          Empty and full measurement capture will be added in the next
+          calibration slice.
+        </p>
+
+        <p class="fw-actions">
+          <a class="fw-link" href="/">Return to setup</a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    var remaining = )HTML";
+
+  body += String(status.remainingS);
+
+  body += R"HTML(;
+    var display = document.getElementById("fw-session-countdown");
+
+    function render() {
+      if (remaining <= 0) {
+        display.textContent = "expired";
+        return;
+      }
+
+      var minutes = Math.floor(remaining / 60);
+      var seconds = remaining % 60;
+      display.textContent =
+          minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    render();
+
+    window.setInterval(function () {
+      if (remaining > 0) {
+        --remaining;
+        render();
+      }
+    }, 1000);
+  }());
+  </script>
+</body>
+</html>
+)HTML";
+
+  return body;
+}
+
+void handleCalibrationIntro() {
+  noteFormSubmitted();
+
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403,
+        "text/plain",
+        "FarmWhisper setup is locked");
+    return;
+  }
+
+  const String body = calibrationIntroPageHtml(currentStatus());
+  sendNoStore();
+  setupServer->send(200, "text/html", body);
 }
 
 void handleSetupRoot() {
@@ -992,6 +1110,7 @@ void registerRoutes(
       "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
   server.on(
       "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
+    server.on("/calibration", HTTP_POST, handleCalibrationIntro);
   server.on("/pin", HTTP_POST, handleSetupPinChange);
   server.onNotFound(handleSetupNotFound);
 }
