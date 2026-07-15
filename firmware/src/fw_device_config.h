@@ -13,6 +13,9 @@
 // radio channel, and selected transport mode are stored in NVS.
 
 constexpr size_t kFwDeviceAliasMaxLen = 32;
+constexpr uint8_t kFwDefaultBeaconsPerHour = 4;
+constexpr uint8_t kFwMinBeaconsPerHour = 1;
+constexpr uint8_t kFwMaxBeaconsPerHour = 12;
 
 void fwLoadDeviceConfig();
 
@@ -31,6 +34,10 @@ void fwClearSelectedRadioChannel();
 FwTransportModeId fwSelectedTransportModeId();
 bool fwSetSelectedTransportModeByKey(const char* key);
 void fwClearSelectedTransportMode();
+
+uint8_t fwBeaconsPerHour();
+bool fwSetBeaconsPerHour(uint8_t beaconsPerHour);
+void fwClearBeaconsPerHour();
 
 bool fwCalibrationConfigured();
 uint16_t fwCalibrationEmptyMm();

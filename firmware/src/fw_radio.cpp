@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <string.h>
 
+#include "fw_battery.h"
 #include "fw_device_config.h"
 #include "fw_packet.h"
 #include "fw_tof.h"
@@ -55,6 +56,9 @@ uint32_t diagnosticBurstNextTxAtMs = 0;
 uint32_t diagnosticBurstAttemptCount = 0;
 uint32_t diagnosticBurstPassCount = 0;
 uint32_t diagnosticBurstFailureCount = 0;
+
+bool normalBeaconScheduled = false;
+uint32_t normalBeaconNextTxAtMs = 0;
 
 int8_t appliedPowerDbm(const FwRadioProfile &profile) {
   return profile.txPowerDbm > kRadioLibSx1262MaxPowerDbm
@@ -359,6 +363,7 @@ bool transmitDiagnostic(Stream &out) {
   telemetry.emptyMm = FWPacket::kUnknownU16;
   telemetry.fullMm = FWPacket::kUnknownU16;
   telemetry.fillPermille = FWPacket::kUnknownU16;
+  telemetry.batteryMillivolts = FWBattery::readMillivolts();
   telemetry.uptimeSeconds = millis() / 1000UL;
   FWPacket::readLocalSourceId(telemetry.sourceId);
 
@@ -408,6 +413,12 @@ bool transmitDiagnostic(Stream &out) {
     out.print("unknown");
   } else {
     out.print(telemetry.distanceMm);
+  }
+  out.print(" batteryMv=");
+  if (telemetry.batteryMillivolts == FWPacket::kUnknownU16) {
+    out.print("unknown");
+  } else {
+    out.print(telemetry.batteryMillivolts);
   }
   out.print(" fillPermille=");
   if (telemetry.fillPermille == FWPacket::kUnknownU16) {
@@ -502,6 +513,45 @@ void serviceDiagnosticBurst(Stream &out) {
   }
 
   diagnosticBurstNextTxAtMs = nextTxAtMs;
+}
+
+
+void resetNormalBeaconSchedule() {
+  normalBeaconScheduled = false;
+  normalBeaconNextTxAtMs = 0;
+}
+
+void serviceNormalBeacon(Stream &out) {
+  if (diagnosticBurstRunning) {
+    resetNormalBeaconSchedule();
+    return;
+  }
+
+  const uint8_t beaconsPerHour = fwBeaconsPerHour();
+  const uint32_t intervalMs =
+      3600000UL / static_cast<uint32_t>(beaconsPerHour);
+  const uint32_t now = millis();
+
+  if (!normalBeaconScheduled) {
+    normalBeaconNextTxAtMs = now + intervalMs;
+    normalBeaconScheduled = true;
+    out.print("[radio] normal beacon scheduled ratePerHour=");
+    out.print(beaconsPerHour);
+    out.print(" intervalMs=");
+    out.println(intervalMs);
+    return;
+  }
+
+  if (static_cast<int32_t>(now - normalBeaconNextTxAtMs) < 0) {
+    return;
+  }
+
+  out.print("[radio] normal beacon due ratePerHour=");
+  out.println(beaconsPerHour);
+  transmitDiagnostic(out);
+
+  const uint32_t afterTxMs = millis();
+  normalBeaconNextTxAtMs = afterTxMs + intervalMs;
 }
 
 void cancelDiagnosticBurst(Stream &out, const char *reason) {

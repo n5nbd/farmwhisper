@@ -137,6 +137,25 @@ void appendTransportModeOptions(String &out) {
   }
 }
 
+void appendBeaconsPerHourOptions(String &out) {
+  const uint8_t selected = fwBeaconsPerHour();
+
+  for (uint8_t rate = kFwMinBeaconsPerHour;
+       rate <= kFwMaxBeaconsPerHour;
+       ++rate) {
+    out += R"HTML(<option value=")HTML";
+    out += String(rate);
+    out += "\"";
+    if (rate == selected) {
+      out += " selected";
+    }
+    out += ">";
+    out += String(rate);
+    out += rate == 1 ? " per hour" : " per hour";
+    out += "</option>";
+  }
+}
+
 WebServer *setupServer = nullptr;
 FWWiFiSetupWeb::StatusProvider provideStatus = nullptr;
 
@@ -744,6 +763,20 @@ String setupRootPageHtml(
             </div>
             <button class="fw-button fw-config-action" type="submit">Update</button>
             <div class="fw-config-note">All FarmWhisper units that communicate directly must use the same channel.</div>
+          </form>
+
+
+          <form class="fw-config-row" method="post" action="/beacon-rate">
+            <label class="fw-config-label" for="fw-beacon-rate">Telemetry beacons per hour</label>
+            <div class="fw-config-control">
+              <select class="fw-select" id="fw-beacon-rate" name="rate">
+)HTML";
+  appendBeaconsPerHourOptions(body);
+  body += R"HTML(
+              </select>
+            </div>
+            <button class="fw-button fw-config-action" type="submit">Update</button>
+            <div class="fw-config-note">Higher beacon rates provide more frequent updates but reduce battery life.</div>
           </form>
 
           <form class="fw-config-row" method="post" action="/diagnostic-flood">
@@ -2077,6 +2110,39 @@ void handleSetupRadioChannelChange() {
   redirectToRoot();
 }
 
+
+void handleSetupBeaconRateChange() {
+  noteFormSubmitted();
+  if (setupPinConfigured && !setupUnlocked) {
+    sendNoStore();
+    setupServer->send(
+        403, "text/plain", "FarmWhisper setup is locked");
+    return;
+  }
+
+  String rateText = setupServer->arg("rate");
+  rateText.trim();
+  const int rate = rateText.toInt();
+
+  if (rate < kFwMinBeaconsPerHour ||
+      rate > kFwMaxBeaconsPerHour ||
+      !fwSetBeaconsPerHour(static_cast<uint8_t>(rate))) {
+    sendNoStore();
+    setupServer->send(
+        400,
+        "text/plain",
+        "Telemetry beacon rate must be from 1 through 12 per hour.");
+    return;
+  }
+
+  FWRadio::resetNormalBeaconSchedule();
+  setSetupNotice(
+      String("Telemetry beacon rate set to ") + rate +
+      (rate == 1 ? " per hour. " : " per hour. ") +
+      "This setting remains active until changed.");
+  redirectToRoot();
+}
+
 void handleSetupDiagnosticFlood() {
   noteFormSubmitted();
   if (setupPinConfigured && !setupUnlocked) {
@@ -2287,6 +2353,8 @@ void registerRoutes(
       "/radio-profile", HTTP_POST, handleSetupRadioProfileChange);
   server.on(
       "/radio-channel", HTTP_POST, handleSetupRadioChannelChange);
+  server.on(
+      "/beacon-rate", HTTP_POST, handleSetupBeaconRateChange);
   server.on(
       "/diagnostic-flood", HTTP_POST, handleSetupDiagnosticFlood);
   server.on("/calibration", HTTP_POST, handleCalibrationIntro);

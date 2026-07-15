@@ -12,6 +12,7 @@ constexpr const char* kAliasKey = "alias";
 constexpr const char* kRadioProfileKey = "radioProfile";
 constexpr const char* kRadioChannelKey = "radioChannel";
 constexpr const char* kTransportModeKey = "transportMode";
+constexpr const char* kBeaconsPerHourKey = "beaconsHour";
 constexpr const char* kCalibrationKey = "calibration";
 constexpr const char* kDefaultDeviceAlias = "FarmWhisper device";
 constexpr uint16_t kCalibrationStorageVersion = 1;
@@ -27,6 +28,7 @@ char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
 FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
 uint8_t selectedRadioChannelNumber = 9;
 FwTransportModeId selectedTransportModeId = FwTransportModeId::LoRa;
+uint8_t selectedBeaconsPerHour = kFwDefaultBeaconsPerHour;
 bool calibrationConfigured = false;
 uint16_t calibrationEmptyMm = 0;
 uint16_t calibrationFullMm = 0;
@@ -86,6 +88,7 @@ void fwLoadDeviceConfig() {
   useDefaultRadioProfile();
   useDefaultRadioChannel();
   useDefaultTransportMode();
+  selectedBeaconsPerHour = kFwDefaultBeaconsPerHour;
   calibrationConfigured = false;
   calibrationEmptyMm = 0;
   calibrationFullMm = 0;
@@ -118,6 +121,13 @@ void fwLoadDeviceConfig() {
         fwTransportModeByKey(storedTransportModeKey.c_str());
     if (storedTransportMode != nullptr) {
       selectedTransportModeId = storedTransportMode->id;
+    }
+
+    const uint8_t storedBeaconsPerHour =
+        prefs.getUChar(kBeaconsPerHourKey, kFwDefaultBeaconsPerHour);
+    if (storedBeaconsPerHour >= kFwMinBeaconsPerHour &&
+        storedBeaconsPerHour <= kFwMaxBeaconsPerHour) {
+      selectedBeaconsPerHour = storedBeaconsPerHour;
     }
 
     if (prefs.getBytesLength(kCalibrationKey) ==
@@ -301,6 +311,48 @@ void fwClearSelectedTransportMode() {
   }
 
   useDefaultTransportMode();
+  configLoaded = true;
+}
+
+uint8_t fwBeaconsPerHour() {
+  if (!configLoaded) {
+    fwLoadDeviceConfig();
+  }
+
+  return selectedBeaconsPerHour;
+}
+
+bool fwSetBeaconsPerHour(uint8_t beaconsPerHour) {
+  if (beaconsPerHour < kFwMinBeaconsPerHour ||
+      beaconsPerHour > kFwMaxBeaconsPerHour) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kConfigNamespace, false)) {
+    return false;
+  }
+
+  const bool ok =
+      prefs.putUChar(kBeaconsPerHourKey, beaconsPerHour) == 1;
+  prefs.end();
+
+  if (ok) {
+    selectedBeaconsPerHour = beaconsPerHour;
+    configLoaded = true;
+  }
+
+  return ok;
+}
+
+void fwClearBeaconsPerHour() {
+  Preferences prefs;
+  if (prefs.begin(kConfigNamespace, false)) {
+    prefs.remove(kBeaconsPerHourKey);
+    prefs.end();
+  }
+
+  selectedBeaconsPerHour = kFwDefaultBeaconsPerHour;
   configLoaded = true;
 }
 

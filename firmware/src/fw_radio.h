@@ -53,6 +53,9 @@ void serviceDiagnosticBurst(Stream &out);
 void cancelDiagnosticBurst(Stream &out, const char *reason);
 bool diagnosticBurstActive();
 
+void serviceNormalBeacon(Stream &out);
+void resetNormalBeaconSchedule();
+
 uint32_t txCount();
 int16_t lastTxResult();
 
