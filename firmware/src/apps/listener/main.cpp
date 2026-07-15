@@ -2,6 +2,7 @@
 #include <RadioLib.h>
 #include <SPI.h>
 
+#include "fw_packet.h"
 #include "fw_radio_channel.h"
 #include "fw_radio_profile.h"
 
@@ -151,6 +152,14 @@ bool beginRadio() {
   return true;
 }
 
+void printOptionalU16(uint16_t value) {
+  if (value == FWPacket::kUnknownU16) {
+    Serial.print("unknown");
+  } else {
+    Serial.print(value);
+  }
+}
+
 void serviceReceivedPacket() {
   if (!packetReceived) {
     return;
@@ -158,25 +167,62 @@ void serviceReceivedPacket() {
 
   packetReceived = false;
 
-  String payload;
-  const int16_t state = radio.readData(payload);
+  const size_t packetLength = radio.getPacketLength();
+  uint8_t payload[255] = {};
+  const int16_t state = radio.readData(payload, packetLength);
 
   if (state == RADIOLIB_ERR_NONE) {
     packetCount++;
 
-    Serial.print("[rx] count=");
-    Serial.print(packetCount);
-    Serial.print(" bytes=");
-    Serial.print(payload.length());
-    Serial.print(" rssi=");
-    Serial.print(radio.getRSSI());
-    Serial.print(" snr=");
-    Serial.print(radio.getSNR());
-    Serial.print(" freqErrorHz=");
-    Serial.print(radio.getFrequencyError());
-    Serial.print(" payload=\"");
-    Serial.print(payload);
-    Serial.println("\"");
+    FWPacket::Telemetry telemetry = {};
+    if (FWPacket::decodeTelemetry(payload, packetLength, telemetry)) {
+      char sourceId[sizeof("FWP-000000")] = {};
+      FWPacket::formatSourceId(
+          telemetry.sourceId, sourceId, sizeof(sourceId));
+
+      Serial.print("[rx] count=");
+      Serial.print(packetCount);
+      Serial.print(" packet=v1.telemetry source=");
+      Serial.print(sourceId);
+      Serial.print(" sequence=");
+      Serial.print(telemetry.sequence);
+      Serial.print(" bytes=");
+      Serial.print(packetLength);
+      Serial.print(" distanceMm=");
+      printOptionalU16(telemetry.distanceMm);
+      Serial.print(" emptyMm=");
+      printOptionalU16(telemetry.emptyMm);
+      Serial.print(" fullMm=");
+      printOptionalU16(telemetry.fullMm);
+      Serial.print(" fillPermille=");
+      printOptionalU16(telemetry.fillPermille);
+      Serial.print(" uptimeS=");
+      Serial.print(telemetry.uptimeSeconds);
+      Serial.print(" tofValid=");
+      Serial.print(
+          (telemetry.flags & FWPacket::kFlagTofValid) != 0 ? "yes" : "no");
+      Serial.print(" tofStable=");
+      Serial.print(
+          (telemetry.flags & FWPacket::kFlagTofStable) != 0 ? "yes" : "no");
+      Serial.print(" calibrated=");
+      Serial.print(
+          (telemetry.flags & FWPacket::kFlagCalibrated) != 0 ? "yes" : "no");
+      Serial.print(" rssi=");
+      Serial.print(radio.getRSSI());
+      Serial.print(" snr=");
+      Serial.print(radio.getSNR());
+      Serial.print(" freqErrorHz=");
+      Serial.println(radio.getFrequencyError());
+    } else {
+      Serial.print("[rx] count=");
+      Serial.print(packetCount);
+      Serial.print(" packet=unrecognized bytes=");
+      Serial.print(packetLength);
+      Serial.print(" rssi=");
+      Serial.print(radio.getRSSI());
+      Serial.print(" snr=");
+      Serial.println(radio.getSNR());
+    }
 
     pulsePacketLed();
   } else {

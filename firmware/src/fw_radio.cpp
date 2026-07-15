@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "fw_device_config.h"
+#include "fw_packet.h"
+#include "fw_tof.h"
 
 namespace {
 
@@ -351,28 +353,75 @@ bool transmitDiagnostic(Stream &out) {
     }
   }
 
-  const uint32_t nextCount = radioTxCount + 1;
-  char packet[96];
-  snprintf(
-      packet,
-      sizeof(packet),
-      "FWP TEST profile=%s channel=%s count=%lu",
-      profile->key,
-      channel->key,
-      static_cast<unsigned long>(nextCount));
+  FWPacket::Telemetry telemetry = {};
+  telemetry.sequence = radioTxCount + 1;
+  telemetry.distanceMm = FWPacket::kUnknownU16;
+  telemetry.emptyMm = FWPacket::kUnknownU16;
+  telemetry.fullMm = FWPacket::kUnknownU16;
+  telemetry.fillPermille = FWPacket::kUnknownU16;
+  telemetry.uptimeSeconds = millis() / 1000UL;
+  FWPacket::readLocalSourceId(telemetry.sourceId);
 
-  out.print("[radio] TX \"");
-  out.print(packet);
-  out.println("\"");
+  if (FWToF::hasLastValid()) {
+    telemetry.flags |= FWPacket::kFlagTofValid;
+    telemetry.distanceMm = FWToF::lastValidMm();
+  }
+
+  uint16_t stableAverageMm = 0;
+  uint16_t stableSpanMm = 0;
+  if (FWToF::stableReading(stableAverageMm, stableSpanMm)) {
+    telemetry.flags |= FWPacket::kFlagTofStable;
+    telemetry.distanceMm = stableAverageMm;
+  }
+
+  if (fwCalibrationConfigured()) {
+    telemetry.flags |= FWPacket::kFlagCalibrated;
+    telemetry.emptyMm = fwCalibrationEmptyMm();
+    telemetry.fullMm = fwCalibrationFullMm();
+    telemetry.fillPermille = FWPacket::calculateFillPermille(
+        telemetry.distanceMm,
+        telemetry.emptyMm,
+        telemetry.fullMm);
+  }
+
+  uint8_t packet[FWPacket::kTelemetryPacketSize] = {};
+  size_t packetSize = 0;
+  if (!FWPacket::encodeTelemetry(
+          telemetry, packet, sizeof(packet), packetSize)) {
+    radioLastTxResult = RADIOLIB_ERR_UNKNOWN;
+    out.println("[radio] TX failed: packet encode error");
+    return false;
+  }
+
+  char sourceId[sizeof("FWP-000000")] = {};
+  FWPacket::formatSourceId(
+      telemetry.sourceId, sourceId, sizeof(sourceId));
+
+  out.print("[radio] TX packet=v1.telemetry source=");
+  out.print(sourceId);
+  out.print(" sequence=");
+  out.print(telemetry.sequence);
+  out.print(" bytes=");
+  out.print(packetSize);
+  out.print(" distanceMm=");
+  if (telemetry.distanceMm == FWPacket::kUnknownU16) {
+    out.print("unknown");
+  } else {
+    out.print(telemetry.distanceMm);
+  }
+  out.print(" fillPermille=");
+  if (telemetry.fillPermille == FWPacket::kUnknownU16) {
+    out.println("unknown");
+  } else {
+    out.println(telemetry.fillPermille);
+  }
 
   const uint32_t startedMs = millis();
-  radioLastTxResult = radio.transmit(
-      reinterpret_cast<uint8_t *>(packet),
-      strlen(packet));
+  radioLastTxResult = radio.transmit(packet, packetSize);
   const uint32_t elapsedMs = millis() - startedMs;
 
   if (radioLastTxResult == RADIOLIB_ERR_NONE) {
-    radioTxCount = nextCount;
+    radioTxCount = telemetry.sequence;
     out.print("[radio] TX PASS elapsedMs=");
     out.println(elapsedMs);
   } else {
