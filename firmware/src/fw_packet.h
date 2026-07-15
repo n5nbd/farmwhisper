@@ -8,7 +8,7 @@ namespace FWPacket {
 
 constexpr uint8_t kProtocolVersion = 1;
 constexpr uint8_t kTelemetryType = 1;
-constexpr size_t kTelemetryPacketSize = 27;
+constexpr size_t kTelemetryPacketSize = 29;
 
 constexpr uint16_t kFlagTofValid = 1U << 0;
 constexpr uint16_t kFlagTofStable = 1U << 1;
@@ -23,6 +23,7 @@ struct Telemetry {
   uint16_t emptyMm;
   uint16_t fullMm;
   uint16_t fillPermille;
+  uint16_t batteryMillivolts;
   uint32_t uptimeSeconds;
 };
 

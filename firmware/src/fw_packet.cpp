@@ -74,9 +74,10 @@ bool encodeTelemetry(
   writeU16(output + 15, telemetry.emptyMm);
   writeU16(output + 17, telemetry.fullMm);
   writeU16(output + 19, telemetry.fillPermille);
-  writeU32(output + 21, telemetry.uptimeSeconds);
+  writeU16(output + 21, telemetry.batteryMillivolts);
+  writeU32(output + 23, telemetry.uptimeSeconds);
 
-  writeU16(output + 25, crc16Ccitt(output, 25));
+  writeU16(output + 27, crc16Ccitt(output, 27));
   encodedSize = kTelemetryPacketSize;
   return true;
 }
@@ -94,8 +95,8 @@ bool decodeTelemetry(
     return false;
   }
 
-  const uint16_t expectedCrc = readU16(data + 25);
-  if (crc16Ccitt(data, 25) != expectedCrc) {
+  const uint16_t expectedCrc = readU16(data + 27);
+  if (crc16Ccitt(data, 27) != expectedCrc) {
     return false;
   }
 
@@ -108,7 +109,8 @@ bool decodeTelemetry(
   telemetry.emptyMm = readU16(data + 15);
   telemetry.fullMm = readU16(data + 17);
   telemetry.fillPermille = readU16(data + 19);
-  telemetry.uptimeSeconds = readU32(data + 21);
+  telemetry.batteryMillivolts = readU16(data + 21);
+  telemetry.uptimeSeconds = readU32(data + 23);
   return true;
 }
 

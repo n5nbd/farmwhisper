@@ -66,6 +66,7 @@ bool displayReady = false;
 bool haveTelemetry = false;
 FWPacket::Telemetry lastTelemetry = {};
 float lastPacketRssi = 0.0f;
+float lastPacketSnr = 0.0f;
 uint32_t lastPacketReceivedMs = 0;
 uint32_t lastDisplayRefreshMs = 0;
 
@@ -234,40 +235,129 @@ void drawTelemetryScreen() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print(sourceId);
-  display.setCursor(92, 0);
-  display.print(ageSeconds);
-  display.print("s");
 
-  display.setCursor(0, 14);
-  display.setTextSize(2);
-  if (lastTelemetry.fillPermille == FWPacket::kUnknownU16) {
-    display.print("--.-%");
+  char ageText[12] = {};
+  snprintf(ageText, sizeof(ageText), "%lus",
+      static_cast<unsigned long>(ageSeconds));
+  int16_t ageX1 = 0;
+  int16_t ageY1 = 0;
+  uint16_t ageWidth = 0;
+  uint16_t ageHeight = 0;
+  display.getTextBounds(
+      ageText, 0, 0, &ageX1, &ageY1, &ageWidth, &ageHeight);
+  display.setCursor(kDisplayWidth - ageWidth, 0);
+  display.print(ageText);
+
+  constexpr int16_t kBarX = 0;
+  constexpr int16_t kBarY = 11;
+  constexpr int16_t kBarWidth = 128;
+  constexpr int16_t kBarHeight = 21;
+  constexpr int16_t kBarInnerX = kBarX + 2;
+  constexpr int16_t kBarInnerY = kBarY + 2;
+  constexpr int16_t kBarInnerWidth = kBarWidth - 4;
+  constexpr int16_t kBarInnerHeight = kBarHeight - 4;
+
+  display.drawRect(
+      kBarX, kBarY, kBarWidth, kBarHeight, SSD1306_WHITE);
+
+  char fillText[12] = {};
+  uint16_t fillPermille = lastTelemetry.fillPermille;
+  if (fillPermille == FWPacket::kUnknownU16) {
+    snprintf(fillText, sizeof(fillText), "--.-%%");
+    fillPermille = 0;
   } else {
-    display.print(lastTelemetry.fillPermille / 10);
-    display.print('.');
-    display.print(lastTelemetry.fillPermille % 10);
-    display.print('%');
+    if (fillPermille > 1000) {
+      fillPermille = 1000;
+    }
+    snprintf(
+        fillText,
+        sizeof(fillText),
+        "%u.%u%%",
+        fillPermille / 10,
+        fillPermille % 10);
   }
+
+  const int16_t fillWidth = static_cast<int16_t>(
+      (static_cast<uint32_t>(kBarInnerWidth) * fillPermille) / 1000UL);
+  if (fillWidth > 0) {
+    display.fillRect(
+        kBarInnerX,
+        kBarInnerY,
+        fillWidth,
+        kBarInnerHeight,
+        SSD1306_WHITE);
+  }
+
+  int16_t textX1 = 0;
+  int16_t textY1 = 0;
+  uint16_t textWidth = 0;
+  uint16_t textHeight = 0;
+  display.getTextBounds(
+      fillText, 0, 0, &textX1, &textY1, &textWidth, &textHeight);
 
   display.setTextSize(1);
-  display.setCursor(0, 37);
+  display.setCursor(
+      fillPermille <= 500
+          ? kBarX + kBarWidth - static_cast<int16_t>(textWidth) - 4
+          : kBarX + 4,
+      kBarY + 7);
+  display.setTextColor(
+      fillPermille <= 500 ? SSD1306_WHITE : SSD1306_BLACK);
+  display.print(fillText);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 36);
   display.print("Distance: ");
   printDisplayValueOrDash(lastTelemetry.distanceMm);
-  display.println(" mm");
+  display.print(" mm");
 
-  display.setCursor(0, 48);
-  display.print("RSSI: ");
+  display.setCursor(0, 46);
+  display.print("RSSI ");
   display.print(lastPacketRssi, 0);
-  display.print(" dBm");
 
-  display.setCursor(0, 57);
-  if (!valid) {
-    display.print("SENSOR INVALID");
-  } else if (!stable) {
-    display.print("SENSOR UNSTABLE");
+  char snrText[16] = {};
+  snprintf(snrText, sizeof(snrText), "SNR %.2f", lastPacketSnr);
+  int16_t snrX1 = 0;
+  int16_t snrY1 = 0;
+  uint16_t snrWidth = 0;
+  uint16_t snrHeight = 0;
+  display.getTextBounds(
+      snrText, 0, 0, &snrX1, &snrY1, &snrWidth, &snrHeight);
+  display.setCursor(kDisplayWidth - snrWidth, 46);
+  display.print(snrText);
+
+  const char *statusText = !valid
+      ? "INVALID"
+      : (!stable ? "UNSTABLE" : "Stable");
+  display.setCursor(0, 55);
+  display.print(statusText);
+
+  char batteryText[12] = {};
+  if (lastTelemetry.batteryMillivolts == FWPacket::kUnknownU16) {
+    snprintf(batteryText, sizeof(batteryText), "--.--v");
   } else {
-    display.print("Sensor stable");
+    snprintf(
+        batteryText,
+        sizeof(batteryText),
+        "%u.%02uv",
+        lastTelemetry.batteryMillivolts / 1000,
+        (lastTelemetry.batteryMillivolts % 1000) / 10);
   }
+
+  int16_t batteryX1 = 0;
+  int16_t batteryY1 = 0;
+  uint16_t batteryWidth = 0;
+  uint16_t batteryHeight = 0;
+  display.getTextBounds(
+      batteryText,
+      0,
+      0,
+      &batteryX1,
+      &batteryY1,
+      &batteryWidth,
+      &batteryHeight);
+  display.setCursor(kDisplayWidth - batteryWidth, 55);
+  display.print(batteryText);
 
   display.display();
 }
@@ -328,6 +418,7 @@ void serviceReceivedPacket() {
     if (FWPacket::decodeTelemetry(payload, packetLength, telemetry)) {
       lastTelemetry = telemetry;
       lastPacketRssi = radio.getRSSI();
+      lastPacketSnr = radio.getSNR();
       lastPacketReceivedMs = millis();
       lastDisplayRefreshMs = lastPacketReceivedMs;
       haveTelemetry = true;
@@ -353,6 +444,8 @@ void serviceReceivedPacket() {
       printOptionalU16(telemetry.fullMm);
       Serial.print(" fillPermille=");
       printOptionalU16(telemetry.fillPermille);
+      Serial.print(" batteryMv=");
+      printOptionalU16(telemetry.batteryMillivolts);
       Serial.print(" uptimeS=");
       Serial.print(telemetry.uptimeSeconds);
       Serial.print(" tofValid=");
