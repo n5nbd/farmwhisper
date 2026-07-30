@@ -318,6 +318,67 @@ bool beginDiagnostic(Stream &out) {
   return true;
 }
 
+// BEGIN FARMWHISPER SHARED TELEMETRY TRANSMIT
+bool transmitTelemetry(const FWPacket::Telemetry &telemetry, Stream &out) {
+  const FwRadioProfile *profile = selectedProfile();
+  const FwRadioChannel *channel = selectedChannel();
+  if (profile == nullptr || channel == nullptr) {
+    radioLastTxResult = RADIOLIB_ERR_UNKNOWN;
+    out.println("[radio] telemetry TX failed: no profile or channel");
+    return false;
+  }
+
+  const FwRadioProfile *activeProfile = appliedProfile();
+  const FwRadioChannel *activeChannel = appliedChannel();
+  const bool configurationChanged =
+      activeProfile == nullptr || activeProfile->id != profile->id ||
+      activeChannel == nullptr || activeChannel->number != channel->number;
+  if (radioState != FwRadioState::Ready || configurationChanged) {
+    if (!beginDiagnostic(out)) {
+      radioLastTxResult = radioResult;
+      return false;
+    }
+  }
+
+  uint8_t packet[FWPacket::kTelemetryPacketSize] = {};
+  size_t packetSize = 0;
+  if (!FWPacket::encodeTelemetry(
+          telemetry, packet, sizeof(packet), packetSize)) {
+    radioLastTxResult = RADIOLIB_ERR_UNKNOWN;
+    out.println("[radio] telemetry TX failed: packet encode error");
+    return false;
+  }
+
+  char sourceId[sizeof("FWP-000000")] = {};
+  FWPacket::formatSourceId(telemetry.sourceId, sourceId, sizeof(sourceId));
+  out.print("[radio] telemetry TX source=");
+  out.print(sourceId);
+  out.print(" sequence=");
+  out.print(telemetry.sequence);
+  out.print(" bytes=");
+  out.println(packetSize);
+
+  const uint32_t startedMs = millis();
+  radioLastTxResult = radio.transmit(packet, packetSize);
+  const uint32_t elapsedMs = millis() - startedMs;
+  if (radioLastTxResult == RADIOLIB_ERR_NONE) {
+    ++radioTxCount;
+    out.print("[radio] telemetry TX PASS elapsedMs=");
+    out.println(elapsedMs);
+  } else {
+    out.print("[radio] telemetry TX failed code=");
+    out.print(radioLastTxResult);
+    out.print(" elapsedMs=");
+    out.println(elapsedMs);
+  }
+
+  const int16_t standbyResult = radio.standby();
+  out.print("[radio] standby result=");
+  out.println(standbyResult);
+  return radioLastTxResult == RADIOLIB_ERR_NONE;
+}
+// END FARMWHISPER SHARED TELEMETRY TRANSMIT
+
 bool transmitDiagnostic(Stream &out) {
   const FwRadioProfile *profile = selectedProfile();
   const FwRadioChannel *channel = selectedChannel();

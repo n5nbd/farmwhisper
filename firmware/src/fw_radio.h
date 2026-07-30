@@ -5,6 +5,7 @@
 
 #include "fw_radio_channel.h"
 #include "fw_radio_profile.h"
+#include "fw_packet.h"
 
 // FarmWhisper SX1262 integration boundary.
 //
@@ -47,6 +48,7 @@ int16_t lastResult();
 
 bool beginDiagnostic(Stream &out);
 bool transmitDiagnostic(Stream &out);
+bool transmitTelemetry(const FWPacket::Telemetry &telemetry, Stream &out);
 
 bool startDiagnosticBurst(Stream &out);
 void serviceDiagnosticBurst(Stream &out);
