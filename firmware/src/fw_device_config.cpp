@@ -27,7 +27,11 @@ bool configLoaded = false;
 char deviceAlias[kFwDeviceAliasMaxLen + 1] = "";
 FwRadioProfileId selectedRadioProfileId = FwRadioProfileId::UsDefault;
 uint8_t selectedRadioChannelNumber = 9;
+#if defined(FW_BOARD_XIAO_C6)
+FwTransportModeId selectedTransportModeId = FwTransportModeId::BluetoothLe;
+#else
 FwTransportModeId selectedTransportModeId = FwTransportModeId::LoRa;
+#endif
 uint8_t selectedBeaconsPerHour = kFwDefaultBeaconsPerHour;
 bool calibrationConfigured = false;
 uint16_t calibrationEmptyMm = 0;
@@ -74,9 +78,13 @@ void useDefaultRadioChannel() {
 }
 
 void useDefaultTransportMode() {
+#if defined(FW_BOARD_XIAO_C6)
+  selectedTransportModeId = FwTransportModeId::BluetoothLe;
+#else
   const FwTransportMode* mode = fwDefaultTransportMode();
   selectedTransportModeId =
       mode == nullptr ? FwTransportModeId::LoRa : mode->id;
+#endif
 }
 
 }  // namespace
@@ -115,6 +123,7 @@ void fwLoadDeviceConfig() {
       selectedRadioChannelNumber = storedRadioChannel->number;
     }
 
+#if !defined(FW_BOARD_XIAO_C6)
     const String storedTransportModeKey =
         prefs.getString(kTransportModeKey, "");
     const FwTransportMode* storedTransportMode =
@@ -122,6 +131,7 @@ void fwLoadDeviceConfig() {
     if (storedTransportMode != nullptr) {
       selectedTransportModeId = storedTransportMode->id;
     }
+#endif
 
     const uint8_t storedBeaconsPerHour =
         prefs.getUChar(kBeaconsPerHourKey, kFwDefaultBeaconsPerHour);
@@ -286,6 +296,11 @@ bool fwSetSelectedTransportModeByKey(const char* key) {
   if (mode == nullptr) {
     return false;
   }
+#if defined(FW_BOARD_XIAO_C6)
+  if (mode->id != FwTransportModeId::BluetoothLe) {
+    return false;
+  }
+#endif
 
   Preferences prefs;
   if (!prefs.begin(kConfigNamespace, false)) {

@@ -13,7 +13,11 @@ void begin() {
 
 bool scanFor(uint8_t expectedAddr) {
   Serial.println();
-  Serial.println("[i2c] Scanning product I2C bus GPIO45 SDA / GPIO46 SCL");
+  Serial.print("[i2c] Scanning product I2C bus GPIO");
+  Serial.print(FWPin::ProductI2cSda);
+  Serial.print(" SDA / GPIO");
+  Serial.print(FWPin::ProductI2cScl);
+  Serial.println(" SCL");
 
   bool foundExpected = false;
   uint8_t foundCount = 0;

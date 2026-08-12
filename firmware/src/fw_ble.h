@@ -14,4 +14,8 @@ void service(Stream &out);
 bool isAdvertising();
 const char *advertisedName();
 
+// Force one update of the existing BLE telemetry manufacturer-data packet.
+// Used by the XIAO C6 diagnostic flood; normal telemetry scheduling is unchanged.
+bool transmitDiagnosticTelemetry(Stream &out);
+
 }  // namespace FWBLE

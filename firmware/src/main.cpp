@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "fw_ble.h"
+#include "fw_battery.h"
 #include "fw_button.h"
 #include "fw_config.h"
 #include "fw_device_config.h"
@@ -16,6 +17,11 @@
 #include "fw_wifi_status.h"
 
 void setup() {
+#if defined(FW_BOARD_XIAO_C6)
+  pinMode(FWPin::SensorRailEnable, OUTPUT);
+  digitalWrite(FWPin::SensorRailEnable, LOW);
+#endif
+
   delay(1200);
   Serial.begin(FWConfig::SerialBaud);
   delay(300);
@@ -26,6 +32,7 @@ void setup() {
   FWBLE::begin(Serial);
   FWStatusPixel::begin();
   FWButton::begin();
+  FWBattery::begin();
   FWExpansionGPIO::begin();
   FWProductI2C::begin();
 
@@ -61,13 +68,21 @@ void loop() {
     FWWiFiStatus::startApSetup(Serial);
   }
 
+#if defined(FW_BOARD_XIAO_C6)
+  FWRadio::serviceDiagnosticBurst(Serial);
+#else
   const FwTransportModeId transportMode = fwSelectedTransportModeId();
   if (fwTransportModeUsesLoRa(transportMode)) {
     FWRadio::serviceDiagnosticBurst(Serial);
+    FWRadio::serviceNormalBeacon(Serial);
   } else if (FWRadio::diagnosticBurstActive()) {
     FWRadio::cancelDiagnosticBurst(
         Serial, "selected transport mode no longer includes LoRa");
+    FWRadio::resetNormalBeaconSchedule();
+  } else {
+    FWRadio::resetNormalBeaconSchedule();
   }
+#endif
 
   FWToF::poll();
   FWStatusPixel::update(FWToF::status());

@@ -726,7 +726,9 @@ String setupRootPageHtml(
             <div class="fw-config-note">Leave blank to restore the default alias.</div>
           </form>
 
-          <form class="fw-config-row" method="post" action="/transport-mode">
+)HTML";
+#if !defined(FW_BOARD_XIAO_C6)
+  body += R"HTML(          <form class="fw-config-row" method="post" action="/transport-mode">
             <label class="fw-config-label" for="fw-transport-mode">Transport mode</label>
             <div class="fw-config-control">
               <select class="fw-select" id="fw-transport-mode" name="mode">
@@ -739,7 +741,9 @@ String setupRootPageHtml(
             <div class="fw-config-note">Bluetooth LE choices enable discovery advertising, the Device Information Service, and the FarmWhisper Configuration Service. Telemetry, notifications, streaming, and OTA are not implemented.</div>
           </form>
 
-          <form class="fw-config-row" method="post" action="/radio-profile">
+)HTML";
+#endif
+  body += R"HTML(          <form class="fw-config-row" method="post" action="/radio-profile">
             <label class="fw-config-label" for="fw-radio-profile">Radio profile</label>
             <div class="fw-config-control">
               <select class="fw-select" id="fw-radio-profile" name="profile">
@@ -2152,6 +2156,7 @@ void handleSetupDiagnosticFlood() {
     return;
   }
 
+#if !defined(FW_BOARD_XIAO_C6)
   const FwTransportModeId selectedId = fwSelectedTransportModeId();
   if (!fwTransportModeUsesLoRa(selectedId)) {
     setSetupNotice(
@@ -2161,6 +2166,7 @@ void handleSetupDiagnosticFlood() {
     redirectToRoot();
     return;
   }
+#endif
 
   if (!FWRadio::startDiagnosticBurst(Serial)) {
     setSetupNotice(
@@ -2170,9 +2176,15 @@ void handleSetupDiagnosticFlood() {
     return;
   }
 
+#if defined(FW_BOARD_XIAO_C6)
+  setSetupNotice(
+      "BLE diagnostic flood started. "
+      "Refreshing telemetry every 5 seconds for about 3 minutes.");
+#else
   setSetupNotice(
       "Diagnostic flood started. "
       "Sending packets for about 3 minutes.");
+#endif
   redirectToRoot();
 }
 

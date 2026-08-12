@@ -1,8 +1,12 @@
 #include "fw_ble.h"
 
+#include "fw_battery.h"
+#include "fw_ble_telemetry.h"
 #include "fw_device_config.h"
+#include "fw_packet.h"
 #include "fw_radio_profile.h"
 #include "fw_transport_mode.h"
+#include "fw_tof.h"
 
 #include <BLEAdvertising.h>
 #include <BLECharacteristic.h>
@@ -38,7 +42,11 @@ constexpr const char *kTransportModeCharacteristicUuid =
 constexpr const char *kManufacturerName = "FarmWhisper";
 constexpr const char *kModelNumber = "FW100";
 constexpr const char *kFirmwareRevision = "development";
+#if defined(FW_BOARD_XIAO_C6)
+constexpr const char *kHardwareRevision = "XIAO ESP32-C6";
+#else
 constexpr const char *kHardwareRevision = "Heltec V4 R2/R8";
+#endif
 
 bool bleStackInitialized = false;
 bool deviceInformationReady = false;
@@ -47,6 +55,14 @@ bool advertisingActive = false;
 bool clientConnected = false;
 bool policyReported = false;
 uint32_t advertisingRestartAfterMs = 0;
+
+#if defined(FW_BOARD_XIAO_C6)
+bool telemetryScheduleActive = false;
+uint32_t telemetryNextUpdateAtMs = 0;
+uint16_t telemetrySequence = 0;
+bool telemetryManufacturerDataReady = false;
+uint8_t telemetryManufacturerData[FWBleTelemetry::kManufacturerDataSize] = {};
+#endif
 
 BLEServer *bleServer = nullptr;
 BLEService *deviceInformationService = nullptr;
@@ -400,13 +416,40 @@ void startAdvertising(Stream &out, const char *advertisingName) {
 
   BLEAdvertisementData advertisementData;
   advertisementData.setFlags(0x06);
+
+#if defined(FW_BOARD_XIAO_C6)
+  if (telemetryManufacturerDataReady) {
+    advertisementData.setManufacturerData(String(
+        reinterpret_cast<const char *>(telemetryManufacturerData),
+        FWBleTelemetry::kManufacturerDataSize));
+
+    BLEAdvertisementData scanResponseData;
+    scanResponseData.setName(advertisingName);
+    scanResponseData.setCompleteServices(
+        BLEUUID(kDeviceInformationServiceUuid));
+
+    advertising->setAdvertisementData(advertisementData);
+    advertising->setScanResponseData(scanResponseData);
+    advertising->setScanResponse(true);
+  } else {
+    advertisementData.setName(advertisingName);
+    advertisementData.setCompleteServices(
+        BLEUUID(kDeviceInformationServiceUuid));
+    advertising->setAdvertisementData(advertisementData);
+    advertising->setScanResponse(false);
+  }
+#else
   advertisementData.setName(advertisingName);
   advertisementData.setCompleteServices(
       BLEUUID(kDeviceInformationServiceUuid));
-
   advertising->setAdvertisementData(advertisementData);
   advertising->setScanResponse(false);
+#endif
+#if defined(CONFIG_NIMBLE_ENABLED)
+  advertising->setAdvertisementType(BLE_GAP_CONN_MODE_UND);
+#elif defined(CONFIG_BLUEDROID_ENABLED)
   advertising->setAdvertisementType(ADV_TYPE_IND);
+#endif
   advertising->start();
 
   snprintf(activeAdvertisingName,
@@ -423,6 +466,128 @@ void startAdvertising(Stream &out, const char *advertisingName) {
       kDeviceInformationServiceUuid,
       kConfigurationServiceUuid);
 }
+
+#if defined(FW_BOARD_XIAO_C6)
+void buildCurrentTelemetry(FWPacket::Telemetry &telemetry) {
+  telemetry = {};
+  telemetry.sequence = telemetrySequence;
+  telemetry.distanceMm = FWPacket::kUnknownU16;
+  telemetry.emptyMm = FWPacket::kUnknownU16;
+  telemetry.fullMm = FWPacket::kUnknownU16;
+  telemetry.fillPermille = FWPacket::kUnknownU16;
+  telemetry.batteryMillivolts = FWBattery::readMillivolts();
+  telemetry.uptimeSeconds = millis() / 1000UL;
+  FWPacket::readLocalSourceId(telemetry.sourceId);
+
+  if (FWToF::hasLastValid()) {
+    telemetry.flags |= FWPacket::kFlagTofValid;
+    telemetry.distanceMm = FWToF::lastValidMm();
+  }
+
+  uint16_t stableAverageMm = 0;
+  uint16_t stableSpanMm = 0;
+  if (FWToF::stableReading(stableAverageMm, stableSpanMm)) {
+    telemetry.flags |= FWPacket::kFlagTofStable;
+    telemetry.distanceMm = stableAverageMm;
+  }
+
+  if (fwCalibrationConfigured()) {
+    telemetry.flags |= FWPacket::kFlagCalibrated;
+    telemetry.emptyMm = fwCalibrationEmptyMm();
+    telemetry.fullMm = fwCalibrationFullMm();
+    telemetry.fillPermille = FWPacket::calculateFillPermille(
+        telemetry.distanceMm,
+        telemetry.emptyMm,
+        telemetry.fullMm);
+  }
+}
+
+bool refreshTelemetryManufacturerData(Stream &out) {
+  FWPacket::Telemetry telemetry = {};
+  buildCurrentTelemetry(telemetry);
+
+  size_t encodedSize = 0;
+  if (!FWBleTelemetry::encodeManufacturerData(
+          telemetry,
+          telemetryManufacturerData,
+          sizeof(telemetryManufacturerData),
+          encodedSize)) {
+    out.println("[ble] telemetry encode failed");
+    return false;
+  }
+
+  telemetryManufacturerDataReady = true;
+  telemetrySequence = static_cast<uint16_t>(telemetrySequence + 1U);
+
+  char sourceId[sizeof("FWP-000000")] = {};
+  FWPacket::formatSourceId(
+      telemetry.sourceId, sourceId, sizeof(sourceId));
+
+  out.print("[ble] telemetry source=");
+  out.print(sourceId);
+  out.print(" sequence=");
+  out.print(telemetry.sequence);
+  out.print(" bytes=");
+  out.print(encodedSize);
+  out.print(" distanceMm=");
+  if (telemetry.distanceMm == FWPacket::kUnknownU16) {
+    out.print("unknown");
+  } else {
+    out.print(telemetry.distanceMm);
+  }
+  out.print(" fillPermille=");
+  if (telemetry.fillPermille == FWPacket::kUnknownU16) {
+    out.print("unknown");
+  } else {
+    out.print(telemetry.fillPermille);
+  }
+  out.print(" batteryMv=");
+  if (telemetry.batteryMillivolts == FWPacket::kUnknownU16) {
+    out.println("unknown");
+  } else {
+    out.println(telemetry.batteryMillivolts);
+  }
+
+  return true;
+}
+
+void serviceTelemetry(Stream &out) {
+  const uint8_t beaconsPerHour = fwBeaconsPerHour();
+  const uint32_t intervalMs =
+      3600000UL / static_cast<uint32_t>(beaconsPerHour);
+  const uint32_t now = millis();
+
+  if (!telemetryScheduleActive) {
+    telemetryNextUpdateAtMs = now + intervalMs;
+    telemetryScheduleActive = true;
+    out.print("[ble] telemetry scheduled ratePerHour=");
+    out.print(beaconsPerHour);
+    out.print(" intervalMs=");
+    out.println(intervalMs);
+    return;
+  }
+
+  if (static_cast<int32_t>(now - telemetryNextUpdateAtMs) < 0) {
+    return;
+  }
+
+  out.print("[ble] telemetry due ratePerHour=");
+  out.println(beaconsPerHour);
+
+  if (refreshTelemetryManufacturerData(out) && !clientConnected) {
+    char desiredAdvertisingName[kMaxLegacyLocalNameLength + 1] = {};
+    buildAdvertisingName(
+        desiredAdvertisingName, sizeof(desiredAdvertisingName));
+
+    if (advertisingActive) {
+      stopAdvertising(out, "telemetry-update");
+    }
+    startAdvertising(out, desiredAdvertisingName);
+  }
+
+  telemetryNextUpdateAtMs = millis() + intervalMs;
+}
+#endif
 
 void reconcile(Stream &out, bool forcePolicyReport) {
   const FwTransportModeId selectedMode = fwSelectedTransportModeId();
@@ -479,6 +644,9 @@ void begin(Stream &out) {
 void service(Stream &out) {
   diagnosticOut = &out;
   reconcile(out, false);
+#if defined(FW_BOARD_XIAO_C6)
+  serviceTelemetry(out);
+#endif
 }
 
 bool isAdvertising() {
@@ -487,6 +655,33 @@ bool isAdvertising() {
 
 const char *advertisedName() {
   return activeAdvertisingName;
+}
+
+bool transmitDiagnosticTelemetry(Stream &out) {
+#if defined(FW_BOARD_XIAO_C6)
+  diagnosticOut = &out;
+
+  if (clientConnected) {
+    out.println("[ble] diagnostic telemetry skipped: client connected");
+    return false;
+  }
+
+  if (!refreshTelemetryManufacturerData(out)) {
+    return false;
+  }
+
+  char desiredAdvertisingName[kMaxLegacyLocalNameLength + 1] = {};
+  buildAdvertisingName(desiredAdvertisingName, sizeof(desiredAdvertisingName));
+
+  if (advertisingActive) {
+    stopAdvertising(out, "diagnostic-telemetry");
+  }
+  startAdvertising(out, desiredAdvertisingName);
+  return true;
+#else
+  (void)out;
+  return false;
+#endif
 }
 
 }  // namespace FWBLE

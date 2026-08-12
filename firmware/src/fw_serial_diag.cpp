@@ -115,16 +115,33 @@ namespace FWSerialDiag {
 void printBootBanner() {
   Serial.println();
   Serial.println("===== FarmWhisper component validation baseline =====");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.println("[boot] Seeed XIAO ESP32-C6 FW100 hardware port");
+  Serial.println("[boot] USB CDC serial enabled");
+  Serial.println("[boot] Product I2C: SDA GPIO22, SCL GPIO23");
+  Serial.println("[boot] Switched 3V3 rail: GPIO21 active LOW, held ON for parity port");
+  Serial.println("[boot] Button: GPIO1 active LOW, raw IRQ + debounced app events");
+#else
   Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
   Serial.println("[boot] USB CDC serial enabled");
   Serial.println("[boot] Product I2C: SDA GPIO45, SCL GPIO46");
   Serial.println("[boot] Button: GPIO42 active LOW, raw IRQ + debounced app events");
+#endif
   Serial.println("[boot] Button events: short press, long press, double press, triple press starts/refreshes setup AP");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.println("[boot] NeoPixel: GPIO2 status model");
+  Serial.println("[boot] Battery measurement deferred; expansion GPIO smoke test unavailable on this target");
+#else
   Serial.println("[boot] NeoPixel: GPIO41 status model");
-  Serial.println("[boot] GPIO37/38/39/40: spare/expansion GPIO smoke test as INPUT_PULLUP");
+  Serial.println("[boot] GPIO37: dedicated battery measurement enable; GPIO38/39/40: expansion GPIO smoke test as INPUT_PULLUP");
+#endif
   Serial.println("[boot] Serial diagnostics: h/? help, s status, i i2c scan, g gpio smoke, v tof verbose, a wifi AP, x wifi status, w wifi scan, l LoRa init, t LoRa TX, r reset counters");
   Serial.println("[boot] Display/OLED disabled");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.println("[boot] LoRa hardware unavailable; l/t diagnostics are no-op");
+#else
   Serial.println("[boot] LoRa inactive until explicit serial l diagnostic");
+#endif
   Serial.println("[boot] WiFi customer join/app calibration not enabled");
 }
 
@@ -142,14 +159,19 @@ void printStatusSnapshot(const char *prefix) {
   Serial.print(FWButton::buttonText(digitalRead(FWPin::BigButton)));
   Serial.print(" rawIrqCount=");
   Serial.print(FWButton::rawIrqCount());
-  Serial.print(" gpio37=");
-  Serial.print(digitalRead(FWPin::SpareGpio37) == LOW ? "LOW/grounded" : "HIGH/open");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.print(" rail21=");
+  Serial.print(digitalRead(FWPin::SensorRailEnable) == LOW ? "LOW/on" : "HIGH/off");
+#else
+  Serial.print(" batteryEnable37=");
+  Serial.print(digitalRead(FWPin::BatteryMeasureEnable) == HIGH ? "HIGH/measuring" : "LOW/inactive");
   Serial.print(" gpio38=");
   Serial.print(digitalRead(FWPin::ExpansionGpio38) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio39=");
   Serial.print(digitalRead(FWPin::ExpansionGpio39) == LOW ? "LOW/grounded" : "HIGH/open");
   Serial.print(" gpio40=");
   Serial.print(digitalRead(FWPin::ExpansionGpio40) == LOW ? "LOW/grounded" : "HIGH/open");
+#endif
   Serial.print(" pressCount=");
   Serial.print(FWButton::pressCount());
   Serial.print(" longPressCount=");
@@ -216,14 +238,23 @@ void printHelp() {
   Serial.println("[serial]   h or ?  help");
   Serial.println("[serial]   s       print status snapshot");
   Serial.println("[serial]   i       rescan product I2C bus");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.println("[serial]   g       expansion GPIO smoke test unavailable on this target");
+#else
   Serial.println("[serial]   g       print GPIO37/38/39/40 smoke-test states");
+#endif
   Serial.println("[serial]   v       toggle verbose per-sample ToF logging");
   Serial.println("[serial]   a       toggle WiFi AP smoke test");
   Serial.println("[serial]   button triple press starts/refreshes WiFi setup AP");
   Serial.println("[serial]   x       print WiFi radio status without scanning");
   Serial.println("[serial]   w       scan WiFi networks, then return WiFi OFF");
+#if defined(FW_BOARD_XIAO_C6)
+  Serial.println("[serial]   l       LoRa unavailable on XIAO ESP32-C6 (no-op)");
+  Serial.println("[serial]   t       LoRa unavailable on XIAO ESP32-C6 (no-op)");
+#else
   Serial.println("[serial]   l       initialize onboard SX1262 using selected profile");
   Serial.println("[serial]   t       transmit one LoRa diagnostic packet");
+#endif
   Serial.println("[serial]   r       reset runtime diagnostics");
 }
 

@@ -15,7 +15,6 @@ const char *groundStateText(uint8_t pin) {
 namespace FWExpansionGPIO {
 
 void begin() {
-  pinMode(FWPin::SpareGpio37, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio38, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio39, INPUT_PULLUP);
   pinMode(FWPin::ExpansionGpio40, INPUT_PULLUP);
@@ -23,8 +22,6 @@ void begin() {
 
 void printSmokeStatus(const char *prefix) {
   Serial.print(prefix);
-  Serial.print(" gpio37=");
-  Serial.print(groundStateText(FWPin::SpareGpio37));
   Serial.print(" gpio38=");
   Serial.print(groundStateText(FWPin::ExpansionGpio38));
   Serial.print(" gpio39=");
