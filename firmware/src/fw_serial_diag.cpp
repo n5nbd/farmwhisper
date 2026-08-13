@@ -114,12 +114,12 @@ namespace FWSerialDiag {
 
 void printBootBanner() {
   Serial.println();
-  Serial.println("===== FarmWhisper component validation baseline =====");
+  Serial.println("===== FarmWhisper FW100 TOF node =====");
 #if defined(FW_BOARD_XIAO_C6)
   Serial.println("[boot] Seeed XIAO ESP32-C6 FW100 hardware port");
   Serial.println("[boot] USB CDC serial enabled");
   Serial.println("[boot] Product I2C: SDA GPIO22, SCL GPIO23");
-  Serial.println("[boot] Switched 3V3 rail: GPIO21 active LOW, held ON for parity port");
+  Serial.println("[boot] Switched 3V3 rail: GPIO21 active LOW, power-managed between telemetry cycles");
   Serial.println("[boot] Button: GPIO1 active LOW, raw IRQ + debounced app events");
 #else
   Serial.println("[boot] Heltec WiFi LoRa 32 V4 R2/R8");
@@ -130,7 +130,7 @@ void printBootBanner() {
   Serial.println("[boot] Button events: short press, long press, double press, triple press starts/refreshes setup AP");
 #if defined(FW_BOARD_XIAO_C6)
   Serial.println("[boot] NeoPixel: GPIO2 status model");
-  Serial.println("[boot] Battery measurement deferred; expansion GPIO smoke test unavailable on this target");
+  Serial.println("[boot] Battery ADC: A0 enabled; expansion GPIO smoke test unavailable on this target");
 #else
   Serial.println("[boot] NeoPixel: GPIO41 status model");
   Serial.println("[boot] GPIO37: dedicated battery measurement enable; GPIO38/39/40: expansion GPIO smoke test as INPUT_PULLUP");
@@ -139,6 +139,7 @@ void printBootBanner() {
   Serial.println("[boot] Display/OLED disabled");
 #if defined(FW_BOARD_XIAO_C6)
   Serial.println("[boot] LoRa hardware unavailable; l/t diagnostics are no-op");
+  Serial.println("[boot] Power: deep sleep follows configured beacon cadence; reset/button service window=30s; setup AP/flood inhibit sleep");
 #else
   Serial.println("[boot] LoRa inactive until explicit serial l diagnostic");
 #endif
