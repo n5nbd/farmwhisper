@@ -58,8 +58,10 @@ uint32_t advertisingRestartAfterMs = 0;
 
 #if defined(FW_BOARD_XIAO_C6)
 bool telemetryScheduleActive = false;
-uint32_t telemetryNextUpdateAtMs = 0;
-uint16_t telemetrySequence = 0;
+RTC_DATA_ATTR uint64_t telemetryElapsedBeforeBootMs = 0;
+RTC_DATA_ATTR uint16_t telemetrySequence = 0;
+uint32_t telemetryBootStartedAtMs = 0;
+uint32_t telemetryHoldUntilMs = 0;
 bool telemetryManufacturerDataReady = false;
 uint8_t telemetryManufacturerData[FWBleTelemetry::kManufacturerDataSize] = {};
 #endif
@@ -558,16 +560,24 @@ void serviceTelemetry(Stream &out) {
   const uint32_t now = millis();
 
   if (!telemetryScheduleActive) {
-    telemetryNextUpdateAtMs = now + intervalMs;
     telemetryScheduleActive = true;
+    // Count the entire awake interval from reset, including startup/ToF init.
+    telemetryBootStartedAtMs = 0;
     out.print("[ble] telemetry scheduled ratePerHour=");
     out.print(beaconsPerHour);
     out.print(" intervalMs=");
     out.println(intervalMs);
+  }
+
+  const uint64_t elapsedMs = telemetryElapsedBeforeBootMs +
+      static_cast<uint32_t>(now - telemetryBootStartedAtMs);
+  if (elapsedMs < intervalMs) {
     return;
   }
 
-  if (static_cast<int32_t>(now - telemetryNextUpdateAtMs) < 0) {
+  // On a power-managed wake, wait until the existing ToF path has produced at
+  // least one valid sample before building the due telemetry packet.
+  if (!FWToF::hasLastValid()) {
     return;
   }
 
@@ -583,10 +593,13 @@ void serviceTelemetry(Stream &out) {
       stopAdvertising(out, "telemetry-update");
     }
     startAdvertising(out, desiredAdvertisingName);
+    telemetryHoldUntilMs = millis() + 1000UL;
   }
 
-  telemetryNextUpdateAtMs = millis() + intervalMs;
+  telemetryElapsedBeforeBootMs = 0;
+  telemetryBootStartedAtMs = millis();
 }
+
 #endif
 
 void reconcile(Stream &out, bool forcePolicyReport) {
@@ -683,5 +696,57 @@ bool transmitDiagnosticTelemetry(Stream &out) {
   return false;
 #endif
 }
+
+#if defined(FW_BOARD_XIAO_C6)
+bool transmitScheduledTelemetry(Stream &out) {
+  diagnosticOut = &out;
+
+  if (clientConnected) {
+    out.println("[ble] scheduled telemetry skipped: client connected");
+    return false;
+  }
+
+  out.print("[ble] timer-wake telemetry ratePerHour=");
+  out.println(fwBeaconsPerHour());
+
+  if (!refreshTelemetryManufacturerData(out)) {
+    return false;
+  }
+
+  char desiredAdvertisingName[kMaxLegacyLocalNameLength + 1] = {};
+  buildAdvertisingName(desiredAdvertisingName, sizeof(desiredAdvertisingName));
+
+  if (advertisingActive) {
+    stopAdvertising(out, "timer-wake-telemetry");
+  }
+  startAdvertising(out, desiredAdvertisingName);
+
+  // The scheduled packet is now accounted for. Keep the existing one-second
+  // advertising hold, then start a fresh configured interval from this wake.
+  telemetryElapsedBeforeBootMs = 0;
+  telemetryBootStartedAtMs = millis();
+  telemetryScheduleActive = true;
+  telemetryHoldUntilMs = millis() + 1000UL;
+  return true;
+}
+
+void prepareForDeepSleep(uint32_t sleepMs) {
+  const uint32_t now = millis();
+  if (!telemetryScheduleActive) {
+    telemetryScheduleActive = true;
+    // Count the entire awake interval from reset, including startup/ToF init.
+    telemetryBootStartedAtMs = 0;
+  }
+  telemetryElapsedBeforeBootMs +=
+      static_cast<uint32_t>(now - telemetryBootStartedAtMs);
+  telemetryElapsedBeforeBootMs += sleepMs;
+  telemetryBootStartedAtMs = now;
+}
+
+bool normalTelemetryHoldActive() {
+  return telemetryHoldUntilMs != 0 &&
+         static_cast<int32_t>(millis() - telemetryHoldUntilMs) < 0;
+}
+#endif
 
 }  // namespace FWBLE

@@ -46,7 +46,7 @@ static constexpr uint8_t ProductI2cScl = 23;  // D5 / GPIO23
 static constexpr uint8_t BigButton = 1;       // D1 / GPIO1, active LOW
 static constexpr uint8_t StatusPixel = 2;     // D2 / GPIO2
 static constexpr uint8_t SensorRailEnable = 21;  // D3 / GPIO21, LOW = ON
-static constexpr uint8_t BatteryVoltageAdc = 0;   // D0 / GPIO0, 176k/165k divider
+static constexpr uint8_t BatteryVoltageAdc = A0;  // D0/A0 battery divider; use Arduino analog pin mapping
 
 #else
 

@@ -35,6 +35,9 @@ void printStatus(Stream &out);
  */
 void service(Stream &out);
 
+/* Return true while the setup AP/HTTP session is active. */
+bool setupApActive();
+
 /*
  * Run one synchronous scan, print results, delete scan data, then force WiFi
  * back OFF. This is a manual diagnostic only.

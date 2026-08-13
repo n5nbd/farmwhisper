@@ -259,7 +259,12 @@ void begin(Stream &out) {
   buildDeviceIdentity();
   WiFi.persistent(false);
   forceWifiOff();
+#if defined(FW_BOARD_XIAO_C6)
+  // Timer wakes must not restart the five-minute setup AP. The existing
+  // triple-press path still starts setup explicitly when requested.
+#else
   startApSetup(out);
+#endif
 }
 
 void printStatus(Stream &out) {
@@ -306,6 +311,10 @@ void service(Stream &out) {
   out.println("[wifi] AP smoke timeout; stopping AP");
   forceWifiOff();
   printStatus(out);
+}
+
+bool setupApActive() {
+  return apSmokeActive && setupHttpActive;
 }
 
 void scanOnce(Stream &out) {
