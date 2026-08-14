@@ -21,6 +21,25 @@ constexpr FwRadioHardware kHeltecV4RadioHardware = {
     14, // DIO1
 };
 
+constexpr FwRadioHardware kXiaoS3WioSx1262RadioHardware = {
+    41, // NSS
+    7,  // SCK
+    9,  // MOSI
+    8,  // MISO
+    42, // RESET
+    40, // BUSY
+    39, // DIO1
+};
+
+#if defined(FW_COOP_STATION_XIAO_S3_WIO_SX1262)
+constexpr const FwRadioHardware &kRadioHardware =
+    kXiaoS3WioSx1262RadioHardware;
+constexpr uint32_t kExternalRxEnablePin = 38;
+#else
+constexpr const FwRadioHardware &kRadioHardware =
+    kHeltecV4RadioHardware;
+#endif
+
 constexpr float kTcxoVoltage = 1.8f;
 constexpr uint8_t kPrivateSyncWord =
     RADIOLIB_SX126X_SYNC_WORD_PRIVATE;
@@ -33,10 +52,10 @@ constexpr uint32_t kDiagnosticBurstExpectedPackets =
     kDiagnosticBurstDurationMs / kDiagnosticBurstIntervalMs;
 
 Module radioModule(
-    kHeltecV4RadioHardware.nssPin,
-    kHeltecV4RadioHardware.dio1Pin,
-    kHeltecV4RadioHardware.resetPin,
-    kHeltecV4RadioHardware.busyPin);
+    kRadioHardware.nssPin,
+    kRadioHardware.dio1Pin,
+    kRadioHardware.resetPin,
+    kRadioHardware.busyPin);
 
 SX1262 radio(&radioModule);
 
@@ -110,7 +129,7 @@ void clearDiagnosticBurstState() {
 namespace FWRadio {
 
 const FwRadioHardware &hardware() {
-  return kHeltecV4RadioHardware;
+  return kRadioHardware;
 }
 
 const FwRadioProfile *selectedProfile() {
@@ -265,10 +284,14 @@ bool beginDiagnostic(Stream &out) {
   printStatus(out);
 
   SPI.begin(
-      kHeltecV4RadioHardware.sckPin,
-      kHeltecV4RadioHardware.misoPin,
-      kHeltecV4RadioHardware.mosiPin,
-      kHeltecV4RadioHardware.nssPin);
+      kRadioHardware.sckPin,
+      kRadioHardware.misoPin,
+      kRadioHardware.mosiPin,
+      kRadioHardware.nssPin);
+
+#if defined(FW_COOP_STATION_XIAO_S3_WIO_SX1262)
+  radio.setRfSwitchPins(kExternalRxEnablePin, RADIOLIB_NC);
+#endif
 
   const float frequencyMhz =
       static_cast<float>(channel->frequencyHz) / 1000000.0f;

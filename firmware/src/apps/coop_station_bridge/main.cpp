@@ -202,6 +202,11 @@ class BridgeCallbacks final : public BLEAdvertisedDeviceCallbacks {
 BridgeCallbacks callbacks;
 
 void beginDisplay() {
+#if defined(FW_COOP_STATION_XIAO_S3_WIO_SX1262)
+  displayReady = false;
+  Serial.println("[display] no onboard OLED on XIAO S3 coop station");
+  return;
+#else
   pinMode(kDisplayVextPin, OUTPUT);
   digitalWrite(kDisplayVextPin, LOW);
   delay(100);
@@ -213,6 +218,7 @@ void beginDisplay() {
   }
   display.setTextWrap(false);
   drawStatus();
+#endif
 }
 
 void beginRadio() {
@@ -247,7 +253,11 @@ void setup() {
   Serial.begin(kSerialBaud);
   delay(1200);
   Serial.println();
+#if defined(FW_COOP_STATION_XIAO_S3_WIO_SX1262)
+  Serial.println("FarmWhisper XIAO S3 + Wio-SX1262 coop station v005-port");
+#else
   Serial.println("FarmWhisper Heltec V4 coop station v005");
+#endif
   Serial.println("Shared BLE telemetry -> shared FWPacket -> shared FWRadio");
   beginDisplay();
   beginRadio();
